@@ -1,0 +1,19 @@
+node_modules
+dist
+.DS_Store
+src-tauri/target
+src-tauri/gen
+*.log
+
+# Local-only / never commit
+.env
+.env.local
+*.p12
+*.pem
+*.cer
+.DS_Store
+.idea/
+.vscode/
+.zed/
+*.swp
+*.tmp

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bar</title>
+    <link rel="stylesheet" href="/src/bar.css" />
+  </head>
+  <body>
+    <div id="bar" class="compact" data-tauri-drag-region title="Live Claude consumer quota.">
+      <div id="fill" data-tauri-drag-region></div>
+      <div id="content" data-tauri-drag-region>
+        <div class="row row-5h" data-tauri-drag-region>
+          <span class="stale-mark" id="stale-mark" data-tauri-drag-region>⚠</span>
+          <span class="src" id="src-5h" data-tauri-drag-region>5H</span>
+          <span class="pct" id="pct-5h" data-tauri-drag-region>—</span>
+          <span class="sep" data-tauri-drag-region>·</span>
+          <span class="time" id="time-5h" data-tauri-drag-region>—</span>
+        </div>
+        <div class="row row-7d" data-tauri-drag-region>
+          <span class="src" data-tauri-drag-region>7D</span>
+          <span class="pct" id="pct-7d" data-tauri-drag-region>—</span>
+          <span class="sep" data-tauri-drag-region>·</span>
+          <span class="time" id="time-7d" data-tauri-drag-region>—</span>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/bar.ts"></script>
+  </body>
+</html>

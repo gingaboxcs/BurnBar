@@ -1,6 +1,8 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { check, Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 type DisplayMode = "bar" | "tray" | "both";
 
@@ -66,6 +68,126 @@ let current: UserSettings = {
   bar_layout: "compact",
   notify_thresholds: true,
 };
+
+type UpdateStatus =
+  | { kind: "idle" }
+  | { kind: "checking" }
+  | { kind: "available"; version: string; notes: string; update: Update }
+  | { kind: "uptodate" }
+  | { kind: "downloading"; downloaded: number; total: number | null }
+  | { kind: "installing" }
+  | { kind: "error"; message: string };
+let updateState: UpdateStatus = { kind: "idle" };
+
+async function checkForUpdates() {
+  updateState = { kind: "checking" };
+  renderUpdateBanner();
+  try {
+    const update = await check();
+    if (update) {
+      updateState = {
+        kind: "available",
+        version: update.version,
+        notes: update.body ?? "",
+        update,
+      };
+    } else {
+      updateState = { kind: "uptodate" };
+    }
+  } catch (e) {
+    updateState = { kind: "error", message: String(e) };
+  }
+  renderUpdateBanner();
+}
+
+async function installUpdate() {
+  if (updateState.kind !== "available") return;
+  const upd = updateState.update;
+  let downloaded = 0;
+  let total: number | null = null;
+  updateState = { kind: "downloading", downloaded, total };
+  renderUpdateBanner();
+  try {
+    await upd.downloadAndInstall((event) => {
+      if (event.event === "Started") {
+        total = event.data.contentLength ?? null;
+        updateState = { kind: "downloading", downloaded: 0, total };
+      } else if (event.event === "Progress") {
+        downloaded += event.data.chunkLength;
+        updateState = { kind: "downloading", downloaded, total };
+      } else if (event.event === "Finished") {
+        updateState = { kind: "installing" };
+      }
+      renderUpdateBanner();
+    });
+    await relaunch();
+  } catch (e) {
+    updateState = { kind: "error", message: String(e) };
+    renderUpdateBanner();
+  }
+}
+
+function renderUpdateBanner() {
+  const banner = document.getElementById("update-banner");
+  if (!banner) return;
+  const close = `<button type="button" id="update-dismiss" class="update-dismiss" title="Dismiss">×</button>`;
+  switch (updateState.kind) {
+    case "idle":
+      banner.style.display = "none";
+      banner.innerHTML = "";
+      return;
+    case "checking":
+      banner.style.display = "";
+      banner.className = "update-banner muted";
+      banner.innerHTML = `<span>Checking for updates…</span>${close}`;
+      break;
+    case "available":
+      banner.style.display = "";
+      banner.className = "update-banner";
+      banner.innerHTML = `
+        <div class="update-text">
+          <strong>BurnBar ${updateState.version}</strong> available
+          ${updateState.notes ? `<em>${updateState.notes.slice(0, 200)}</em>` : ""}
+        </div>
+        <button type="button" id="update-install" class="btn">Install &amp; relaunch</button>
+        ${close}
+      `;
+      break;
+    case "downloading": {
+      const pct = updateState.total
+        ? Math.round((updateState.downloaded / updateState.total) * 100)
+        : null;
+      banner.style.display = "";
+      banner.className = "update-banner";
+      banner.innerHTML = `<span>Downloading ${pct != null ? pct + "%" : ""}…</span>`;
+      break;
+    }
+    case "installing":
+      banner.style.display = "";
+      banner.className = "update-banner";
+      banner.innerHTML = `<span>Installing… app will relaunch.</span>`;
+      break;
+    case "uptodate":
+      banner.style.display = "";
+      banner.className = "update-banner muted";
+      banner.innerHTML = `<span>You're on the latest version.</span>${close}`;
+      break;
+    case "error":
+      banner.style.display = "";
+      banner.className = "update-banner error";
+      banner.innerHTML = `<span>Update check failed: ${updateState.message}</span>${close}`;
+      break;
+  }
+  const installBtn = document.getElementById("update-install");
+  if (installBtn) installBtn.addEventListener("click", installUpdate);
+  const dismiss = document.getElementById("update-dismiss");
+  if (dismiss) {
+    dismiss.addEventListener("click", () => {
+      updateState = { kind: "idle" };
+      renderUpdateBanner();
+    });
+  }
+}
 
 const isMac =
   typeof navigator !== "undefined" &&
@@ -222,6 +344,16 @@ function render() {
       <h1>BurnBar <span class="subtitle">for Claude/GPT</span></h1>
       <p class="sub">Claude &amp; ChatGPT usage at a glance.</p>
     </header>
+
+    <div id="update-banner" class="update-banner" style="display:none"></div>
+
+    <section>
+      <h2>App version</h2>
+      <div class="toggle-row">
+        <button type="button" id="check-updates" class="btn-secondary">Check for updates</button>
+        <span class="muted small">BurnBar checks once on launch automatically.</span>
+      </div>
+    </section>
 
     <section>
       <h2>Display</h2>
@@ -415,6 +547,13 @@ function attachHandlers() {
   if (notifyToggle) {
     notifyToggle.addEventListener("change", async () => {
       await setNotifyThresholds(notifyToggle.checked);
+    });
+  }
+
+  const checkBtn = app.querySelector<HTMLButtonElement>("#check-updates");
+  if (checkBtn) {
+    checkBtn.addEventListener("click", () => {
+      checkForUpdates();
     });
   }
 
@@ -631,6 +770,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   await loadAll();
   render();
   await getCurrentWindow().show();
+
+  // Auto-check on launch. Errors are swallowed — no banner if endpoint down etc.
+  checkForUpdates().catch(() => {});
 });
 
 listen<ApiSnapshot>("api:update", (e) => {

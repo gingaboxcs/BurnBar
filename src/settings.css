@@ -451,6 +451,51 @@ a:hover {
   font-size: 12px;
 }
 
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin: 12px 0;
+  border-radius: 8px;
+  background: rgba(217, 119, 6, 0.12);
+  border: 1px solid rgba(217, 119, 6, 0.45);
+  font-size: 13px;
+  color: var(--fg);
+}
+.update-banner.muted {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--muted);
+}
+.update-banner.error {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.45);
+  color: #dc2626;
+}
+.update-banner .update-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.update-banner em {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.update-dismiss {
+  border: none;
+  background: none;
+  font-size: 18px;
+  color: var(--muted);
+  cursor: pointer;
+  margin-left: auto;
+}
+.update-dismiss:hover {
+  color: var(--fg);
+}
+
 .callout {
   margin: 8px 0 12px;
   padding: 10px 12px;

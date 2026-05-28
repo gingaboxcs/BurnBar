@@ -58,7 +58,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFFNDI0RTAzODREQUFCN0YKUldSL3E5cUVBMDVDcmx5NUJLbUlKODVBRURtc2FGUHYxb2YvNHFoN2xrQjVMNlhIaHk3bW94ZTQK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI1ODQxRDI2QzUyN0VFQjcKUldTMzdpZkZKaDJFdGFveUZFSXErU01CbEgzYkRLcU95UWJJQ2RaL25IV3J4Qlp1NlNibjRrWXoK",
       "endpoints": [
         "https://github.com/gingaboxcs/BurnBar/releases/latest/download/latest.json"
       ]

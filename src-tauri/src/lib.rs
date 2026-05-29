@@ -418,6 +418,16 @@ fn set_notify_thresholds(app: tauri::AppHandle, state: State<AppState>, enabled:
 }
 
 #[tauri::command]
+fn set_show_flame(app: tauri::AppHandle, state: State<AppState>, enabled: bool) {
+    {
+        let mut s = state.settings.lock().unwrap();
+        s.show_flame = enabled;
+        settings::save(&app, &s);
+    }
+    emit_settings_update(&app, &state);
+}
+
+#[tauri::command]
 fn reset_bar_position(app: tauri::AppHandle, state: State<AppState>) {
     {
         let mut s = state.settings.lock().unwrap();
@@ -563,6 +573,7 @@ pub fn run() {
             set_hide_dock_icon,
             set_bar_layout,
             set_notify_thresholds,
+            set_show_flame,
             reset_bar_position,
             get_claude_code_usage,
             get_key_status,

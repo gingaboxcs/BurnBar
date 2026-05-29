@@ -16,6 +16,7 @@ interface UserSettings {
   calibrated_block_start: string | null;
   bar_layout: BarLayout;
   notify_thresholds: boolean;
+  show_flame: boolean;
 }
 
 interface KeyStatus {
@@ -67,6 +68,7 @@ let current: UserSettings = {
   calibrated_block_start: null,
   bar_layout: "compact",
   notify_thresholds: true,
+  show_flame: true,
 };
 
 type UpdateStatus =
@@ -256,6 +258,11 @@ async function setNotifyThresholds(enabled: boolean) {
   await invoke("set_notify_thresholds", { enabled });
 }
 
+async function setShowFlame(enabled: boolean) {
+  current.show_flame = enabled;
+  await invoke("set_show_flame", { enabled });
+}
+
 async function resetBarPosition() {
   await invoke("reset_bar_position");
 }
@@ -409,6 +416,16 @@ function render() {
       </div>
 
       <div class="toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="show-flame" ${current.show_flame ? "checked" : ""} />
+          <span>
+            <strong>Show flame on bar</strong>
+            <em>Tiny blue ember appears at 50%, grows + warms to red as you approach 100%.</em>
+          </span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
         <button type="button" id="reset-pos" class="btn-secondary">Reset bar position</button>
         <span class="muted small">Drag the bar to move it; position is remembered automatically.</span>
       </div>
@@ -547,6 +564,13 @@ function attachHandlers() {
   if (notifyToggle) {
     notifyToggle.addEventListener("change", async () => {
       await setNotifyThresholds(notifyToggle.checked);
+    });
+  }
+
+  const flameToggle = app.querySelector<HTMLInputElement>("#show-flame");
+  if (flameToggle) {
+    flameToggle.addEventListener("change", async () => {
+      await setShowFlame(flameToggle.checked);
     });
   }
 

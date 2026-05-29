@@ -1,6 +1,6 @@
 [package]
 name = "burnbar"
-version = "0.1.1"
+version = "0.1.2"
 description = "Claude & ChatGPT usage at a glance"
 authors = ["Ryan"]
 edition = "2021"

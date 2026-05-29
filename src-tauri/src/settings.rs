@@ -54,6 +54,8 @@ pub struct Settings {
     pub bar_layout: BarLayout,
     #[serde(default = "default_true")]
     pub notify_thresholds: bool,
+    #[serde(default = "default_true")]
+    pub show_flame: bool,
 }
 
 fn default_true() -> bool {
@@ -74,6 +76,7 @@ impl Default for Settings {
             calibrated_block_start: None,
             bar_layout: BarLayout::default(),
             notify_thresholds: true,
+            show_flame: true,
         }
     }
 }

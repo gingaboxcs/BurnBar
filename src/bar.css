@@ -150,3 +150,50 @@ body {
 #bar.stale {
   background: rgba(20, 20, 22, 0.65);
 }
+
+/* ---- Flame overlay ---- */
+#flame {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  width: var(--flame-w, 14px);
+  height: var(--flame-h, 18px);
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  transform-origin: bottom center;
+  transition:
+    opacity 240ms ease,
+    width 360ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    height 360ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  filter: drop-shadow(0 0 var(--flame-glow, 0px) var(--flame-color, #fb923c));
+}
+#bar.flame-on #flame {
+  opacity: 1;
+}
+.flame-outer {
+  fill: var(--flame-color, #fb923c);
+  transform-origin: 50% 100%;
+  animation: flicker var(--flame-speed, 720ms) ease-in-out infinite alternate;
+}
+.flame-inner {
+  fill: var(--flame-inner, #fef3c7);
+  transform-origin: 50% 100%;
+  animation: flicker-inner calc(var(--flame-speed, 720ms) * 0.7) ease-in-out infinite alternate;
+}
+@keyframes flicker {
+  0%   { transform: scale(1, 1) translateY(0); }
+  35%  { transform: scale(0.94, 1.05) translateY(-0.5px); }
+  70%  { transform: scale(1.06, 0.94) translateY(0.5px); }
+  100% { transform: scale(0.98, 1.02) translateY(-0.5px); }
+}
+@keyframes flicker-inner {
+  0%   { transform: scale(1, 0.9); }
+  50%  { transform: scale(0.9, 1.1) translateY(-0.5px); }
+  100% { transform: scale(1.05, 0.95); }
+}
+/* Stacked layout — flame is bigger because there's vertical room */
+#bar.stacked #flame {
+  top: 4px;
+  right: 6px;
+}

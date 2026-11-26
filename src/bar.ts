@@ -197,6 +197,14 @@ function paint() {
 
   const haveQuota =
     lastQuota && !lastQuota.error && lastQuota.five_hour_utilization != null;
+  // Verified Ultra accounts have no 5-hour limit, so the usage endpoint can
+  // return only the weekly window. Show that as the main row instead of
+  // falling back to Claude Code token counts.
+  const haveWeeklyOnly =
+    !!lastQuota &&
+    !lastQuota.error &&
+    lastQuota.five_hour_utilization == null &&
+    lastQuota.seven_day_utilization != null;
   const isStale = !!(lastQuota && lastQuota.error);
 
   let displayPct = 0;
@@ -221,6 +229,15 @@ function paint() {
     } else {
       row7.style.display = "none";
     }
+    setBarColors(pct, isStale);
+    stale.title = "";
+  } else if (haveWeeklyOnly) {
+    const pct = lastQuota!.seven_day_utilization!;
+    displayPct = pct;
+    src5.textContent = "7D";
+    pct5.textContent = `${Math.round(pct)}%`;
+    time5.textContent = `resets ${fmtResetClock(lastQuota!.seven_day_resets_at)}`;
+    row7.style.display = "none";
     setBarColors(pct, isStale);
     stale.title = "";
   } else if (lastCC) {

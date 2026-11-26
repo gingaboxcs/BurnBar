@@ -153,6 +153,9 @@ fn rebuild_tray(app: &tauri::AppHandle) {
             _ =>
                 if quota.error.is_some() {
                     "  (Claude.app session unavailable)".to_string()
+                } else if quota.seven_day_utilization.is_some() {
+                    // e.g. verified Ultra accounts, which have no 5-hour limit
+                    "  (no 5-hour limit on this plan)".to_string()
                 } else {
                     String::new()
                 },

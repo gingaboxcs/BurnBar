@@ -56,8 +56,10 @@ interface ClaudeCodeSnapshot {
 
 const PRESETS: Array<{ label: string; value: number; note: string }> = [
   { label: "Pro", value: 500_000, note: "~500k tokens / 5h" },
-  { label: "Max 5×", value: 2_500_000, note: "~2.5M tokens / 5h" },
-  { label: "Max 20×", value: 10_000_000, note: "~10M tokens / 5h" },
+  { label: "Max", value: 2_500_000, note: "5× Pro · ~2.5M tokens / 5h" },
+  // Ultra (formerly Max 20×) has no 5-hour limit once verified and 10× Pro
+  // weekly usage, so this is a 10× Pro reference point rather than a hard cap.
+  { label: "Ultra", value: 5_000_000, note: "10× Pro · no 5h limit (verified)" },
 ];
 
 let current: UserSettings = {
@@ -458,7 +460,7 @@ function render() {
       <h2>API usage (today, UTC)</h2>
       <p class="muted">
         Requires <strong>Admin API keys</strong>, not regular API keys. Anthropic admin keys start with <code>sk-ant-admin01-</code> and are created in the
-        <a href="#" data-href="https://console.anthropic.com/settings/admin-keys">Console → Admin Keys</a>.
+        <a href="#" data-href="https://platform.claude.com/settings/admin-keys">Claude Console → Admin Keys</a>.
         OpenAI admin keys start with <code>sk-admin-</code> and live under
         <a href="#" data-href="https://platform.openai.com/settings/organization/admin-keys">Settings → Admin Keys</a>.
         Keys are stored in your OS keychain.

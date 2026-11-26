@@ -21,8 +21,13 @@ pub struct QuotaSnapshot {
 
 #[derive(Debug, Deserialize)]
 struct QuotaResp {
-    five_hour: QuotaWindow,
-    seven_day: QuotaWindow,
+    // Ultra plans (formerly Max 20x) have no 5-hour limit once the account is
+    // verified, so either window can be missing or null. Treat both as optional
+    // instead of failing the whole fetch.
+    #[serde(default)]
+    five_hour: Option<QuotaWindow>,
+    #[serde(default)]
+    seven_day: Option<QuotaWindow>,
 }
 #[derive(Debug, Deserialize)]
 struct QuotaWindow {
@@ -114,10 +119,10 @@ async fn fetch_inner() -> Result<QuotaSnapshot, String> {
         .map_err(|e| e.to_string())?;
 
     Ok(QuotaSnapshot {
-        five_hour_utilization: Some(q.five_hour.utilization),
-        five_hour_resets_at: Some(q.five_hour.resets_at),
-        seven_day_utilization: Some(q.seven_day.utilization),
-        seven_day_resets_at: Some(q.seven_day.resets_at),
+        five_hour_utilization: q.five_hour.as_ref().map(|w| w.utilization),
+        five_hour_resets_at: q.five_hour.as_ref().map(|w| w.resets_at),
+        seven_day_utilization: q.seven_day.as_ref().map(|w| w.utilization),
+        seven_day_resets_at: q.seven_day.as_ref().map(|w| w.resets_at),
         fetched_at: Some(Utc::now()),
         error: None,
     })

@@ -36,33 +36,105 @@ pub struct ApiSnapshot {
     pub openai_error: Option<String>,
 }
 
-// Pricing per 1M tokens (USD). Best-effort defaults; users can ignore if
-// inaccurate. Keys matched as substring against the returned `model` field.
-fn price_per_million(model: &str) -> (f64, f64) {
+// Pricing per 1M tokens (USD): (input, output, cache read). Best-effort
+// defaults taken from the providers' public price pages (checked 2026-11-26);
+// users can ignore if inaccurate. Rows are checked top to bottom, so more
+// specific model names must come before the shorter names they contain
+// (e.g. "opus-5-5" before "opus-5", "gpt-5.4-mini" before "gpt-5.4").
+// A cache read price of `None` means "10% of input", which is the usual rate.
+// Cache writes are approximated as input * 1.25 below.
+const ANTHROPIC_PRICES: &[(&str, f64, f64, Option<f64>)] = &[
+    // Fable / Mythos
+    ("fable-5-2", 8.0, 40.0, Some(0.20)),
+    ("mythos-5-2", 8.0, 40.0, Some(0.20)),
+    ("fable", 10.0, 50.0, None),
+    ("mythos", 10.0, 50.0, None),
+    // Opus
+    ("opus-5-5", 4.0, 20.0, Some(0.20)),
+    ("opus-5", 5.0, 25.0, None),
+    ("opus-4-8", 5.0, 25.0, None),
+    ("opus-4-7", 5.0, 25.0, None),
+    ("opus-4-6", 5.0, 25.0, None),
+    ("opus-4-5", 5.0, 25.0, None),
+    ("opus", 15.0, 75.0, None), // Opus 4.1 / 4 / 3
+    // Sonnet
+    ("sonnet-5-5", 2.0, 10.0, Some(0.10)),
+    ("sonnet-5", 2.0, 10.0, None),
+    ("sonnet", 3.0, 15.0, None), // Sonnet 4.x / 3.x
+    // Haiku
+    ("haiku-5-5", 0.10, 0.50, None), // prompts up to 100K tokens
+    ("haiku-4", 1.0, 5.0, None),
+    ("3-5-haiku", 0.80, 4.0, None),
+    ("haiku", 0.25, 1.25, None), // Claude 3 Haiku
+];
+
+// OpenAI model ids are matched as prefixes, so dated snapshots like
+// "gpt-4o-2024-08-06" still resolve. Short-context (<272K) rates.
+const OPENAI_PRICES: &[(&str, f64, f64, Option<f64>)] = &[
+    // GPT-6.x
+    ("gpt-6.2-astra", 8.0, 40.0, None),
+    ("gpt-6.2-sol", 2.0, 10.0, None),
+    ("gpt-6.1-sol", 2.0, 10.0, None),
+    ("gpt-6.1-terra", 1.0, 5.0, None),
+    ("gpt-6-astra", 10.0, 50.0, None),
+    ("gpt-6-sol", 2.0, 10.0, None),
+    ("gpt-6-luna", 0.10, 0.50, None),
+    ("gpt-6-cyber", 20.0, 100.0, None),
+    ("gpt-6-rosalind", 10.0, 50.0, None),
+    ("gpt-rosalind", 5.0, 25.0, None),
+    // GPT-5.x
+    ("gpt-5.6-cyber", 12.5, 75.0, None),
+    ("gpt-5.6-sol", 4.0, 20.0, None),
+    ("gpt-5.6-terra", 2.0, 12.0, None),
+    ("gpt-5.6-luna", 0.20, 1.20, None),
+    ("gpt-5.5-cyber", 12.5, 75.0, None),
+    ("gpt-5.5-pro", 30.0, 180.0, None),
+    ("gpt-5.5", 5.0, 30.0, None),
+    ("gpt-5.4-pro", 30.0, 180.0, None),
+    ("gpt-5.4-mini", 0.75, 4.50, None),
+    ("gpt-5.4-nano", 0.20, 1.25, None),
+    ("gpt-5.4", 2.50, 15.0, None),
+    ("gpt-5.3", 1.75, 14.0, None),
+    ("gpt-5.2-pro", 21.0, 168.0, None),
+    ("gpt-5.2", 1.75, 14.0, None),
+    ("gpt-5.1", 1.25, 10.0, None),
+    ("gpt-5-pro", 15.0, 120.0, None),
+    ("gpt-5-mini", 0.25, 2.0, None),
+    ("gpt-5-nano", 0.05, 0.40, None),
+    ("gpt-5", 1.25, 10.0, None),
+    ("chat-latest", 5.0, 30.0, None),
+    // GPT-4.x
+    ("gpt-4.1-mini", 0.40, 1.60, None),
+    ("gpt-4.1-nano", 0.10, 0.40, None),
+    ("gpt-4.1", 2.0, 8.0, None),
+    ("gpt-4o-mini", 0.15, 0.60, None),
+    ("gpt-4o", 2.50, 10.0, None),
+    ("gpt-4", 10.0, 30.0, None),
+    ("gpt-3.5", 0.50, 1.50, None),
+    ("gpt-35", 0.50, 1.50, None),
+    // o-series
+    ("o4-mini-deep-research", 2.0, 8.0, None),
+    ("o4-mini", 1.10, 4.40, None),
+    ("o3-deep-research", 10.0, 40.0, None),
+    ("o3-pro", 20.0, 80.0, None),
+    ("o3-mini", 1.10, 4.40, None),
+    ("o3", 2.0, 8.0, None),
+    ("o1-pro", 150.0, 600.0, None),
+    ("o1-mini", 1.10, 4.40, None),
+    ("o1", 15.0, 60.0, None),
+];
+
+const DEFAULT_PRICE: (f64, f64, f64) = (3.0, 15.0, 0.30);
+
+fn price_per_million(model: &str) -> (f64, f64, f64) {
     let m = model.to_lowercase();
-    // (input, output) — cache prices approximated as input * 1.25 / 0.1 below.
-    if m.contains("opus-4-7") {
-        (15.0, 75.0)
-    } else if m.contains("opus") {
-        (15.0, 75.0)
-    } else if m.contains("sonnet-4") {
-        (3.0, 15.0)
-    } else if m.contains("haiku-4") {
-        (1.0, 5.0)
-    } else if m.contains("gpt-5") {
-        (5.0, 20.0)
-    } else if m.contains("gpt-4.1") || m.contains("gpt-4-1") {
-        (2.0, 8.0)
-    } else if m.contains("gpt-4o") {
-        (2.5, 10.0)
-    } else if m.contains("o3") || m.contains("o4") {
-        (10.0, 40.0)
-    } else if m.contains("gpt-4") {
-        (10.0, 30.0)
-    } else if m.contains("gpt-3.5") || m.contains("gpt-35") {
-        (0.5, 1.5)
-    } else {
-        (3.0, 15.0)
+    let row = ANTHROPIC_PRICES
+        .iter()
+        .find(|(k, ..)| m.contains(k))
+        .or_else(|| OPENAI_PRICES.iter().find(|(k, ..)| m.starts_with(k)));
+    match row {
+        Some((_, i, o, cr)) => (*i, *o, cr.unwrap_or(i * 0.10)),
+        None => DEFAULT_PRICE,
     }
 }
 
@@ -73,9 +145,8 @@ fn estimate_cost(
     cache_creation: u64,
     cache_read: u64,
 ) -> f64 {
-    let (in_p, out_p) = price_per_million(model);
+    let (in_p, out_p, cr_p) = price_per_million(model);
     let cc_p = in_p * 1.25;
-    let cr_p = in_p * 0.10;
     (input as f64 / 1_000_000.0) * in_p
         + (output as f64 / 1_000_000.0) * out_p
         + (cache_creation as f64 / 1_000_000.0) * cc_p
@@ -293,5 +364,50 @@ fn truncate(s: &str, n: usize) -> String {
         s.to_string()
     } else {
         format!("{}…", &s[..n])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::price_per_million;
+
+    fn io(model: &str) -> (f64, f64) {
+        let (i, o, _) = price_per_million(model);
+        (i, o)
+    }
+
+    #[test]
+    fn anthropic_models_match_most_specific_row() {
+        assert_eq!(io("claude-fable-5-2"), (8.0, 40.0));
+        assert_eq!(io("claude-fable-5-1"), (10.0, 50.0));
+        assert_eq!(io("claude-opus-5-5"), (4.0, 20.0));
+        assert_eq!(io("claude-opus-5"), (5.0, 25.0));
+        assert_eq!(io("claude-opus-4-8"), (5.0, 25.0));
+        assert_eq!(io("claude-opus-4-5-20251101"), (5.0, 25.0));
+        assert_eq!(io("claude-opus-4-1-20250805"), (15.0, 75.0));
+        assert_eq!(io("claude-sonnet-5-5"), (2.0, 10.0));
+        assert_eq!(io("claude-sonnet-4-6"), (3.0, 15.0));
+        assert_eq!(io("claude-3-5-sonnet-20241022"), (3.0, 15.0));
+        assert_eq!(io("claude-haiku-5-5"), (0.10, 0.50));
+        assert_eq!(io("claude-haiku-4-5"), (1.0, 5.0));
+        assert_eq!(price_per_million("claude-opus-5-5").2, 0.20);
+        assert_eq!(price_per_million("claude-opus-4-8").2, 0.50);
+    }
+
+    #[test]
+    fn openai_models_match_most_specific_row() {
+        assert_eq!(io("gpt-6.2-astra"), (8.0, 40.0));
+        assert_eq!(io("gpt-6.2-sol-healthcare"), (2.0, 10.0));
+        assert_eq!(io("gpt-6-luna"), (0.10, 0.50));
+        assert_eq!(io("gpt-5.5-pro"), (30.0, 180.0));
+        assert_eq!(io("gpt-5.4-mini-2026-03-17"), (0.75, 4.50));
+        assert_eq!(io("gpt-5.2-codex"), (1.75, 14.0));
+        assert_eq!(io("gpt-5-mini-2025-08-07"), (0.25, 2.0));
+        assert_eq!(io("gpt-5"), (1.25, 10.0));
+        assert_eq!(io("gpt-4o-mini-2024-07-18"), (0.15, 0.60));
+        assert_eq!(io("gpt-4o-2024-08-06"), (2.50, 10.0));
+        assert_eq!(io("o4-mini"), (1.10, 4.40));
+        assert_eq!(io("o3"), (2.0, 8.0));
+        assert_eq!(io("something-new"), (3.0, 15.0));
     }
 }

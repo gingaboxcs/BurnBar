@@ -20,7 +20,7 @@ body.stacked {
   --bar-h: 64px;
 }
 
-/* The bar sits at the bottom of the window. When flames are enabled the
+/* The bar sits at the bottom of the window. While flames are showing the
  * window is taller by --flame-headroom, leaving transparent space above the
  * bar for the flames to rise into. */
 #bar {
@@ -168,16 +168,16 @@ body.stacked {
 }
 
 /* ---- Flames ----
- * Flames burn on top of the bar: their base overlaps the bar's top edge by a
- * few px and they rise into the transparent headroom above it. Either the
+ * Flames burn on top of the bar: their base sits on the bar's top edge and
+ * they rise into the transparent headroom above it. Either the
  * live WebGL flame (#flame-live, see flame-gl.ts) or one of three animated
  * clip strips is shown; switching clip stages crossfades. */
 #flame {
   position: absolute;
   left: 4px;
   right: 4px;
-  bottom: calc(var(--bar-h) - 5px);
-  height: calc(var(--flame-headroom) + 5px);
+  bottom: var(--bar-h);
+  height: var(--flame-headroom);
   z-index: 2;
   pointer-events: none;
 }

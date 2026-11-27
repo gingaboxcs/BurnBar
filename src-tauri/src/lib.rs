@@ -5,6 +5,7 @@ mod claude_quota;
 mod secrets;
 mod settings;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -28,6 +29,10 @@ struct AppState {
     api_cache: Mutex<ApiSnapshot>,
     quota_cache: Mutex<QuotaSnapshot>,
     threshold_state: Mutex<ThresholdState>,
+    /// True while the bar window includes flame headroom above the bar
+    /// (i.e. flames are currently showing). Saved positions always refer to
+    /// the bar itself, so this is subtracted back out when saving.
+    flame_headroom: AtomicBool,
 }
 
 #[derive(Default)]
@@ -266,9 +271,19 @@ fn apply_dock_visibility(_app: &tauri::AppHandle, _hide: bool) {
 /// `--flame-headroom` in src/bar.css.
 const FLAME_HEADROOM: u32 = 44;
 
-/// The bar window is the bar itself plus, when flames are enabled, headroom
+fn headroom_px(scale: f64) -> i32 {
+    (FLAME_HEADROOM as f64 * scale).round() as i32
+}
+
+fn headroom_active(app: &tauri::AppHandle) -> bool {
+    app.try_state::<AppState>()
+        .map(|s| s.flame_headroom.load(Ordering::SeqCst))
+        .unwrap_or(false)
+}
+
+/// The bar window is the bar itself plus, while flames are showing, headroom
 /// above it so flames can burn on top of the bar instead of inside it.
-fn size_bar(app: &tauri::AppHandle, layout: BarLayout, show_flame: bool) {
+fn size_bar(app: &tauri::AppHandle, layout: BarLayout, headroom: bool) {
     let Some(bar) = app.get_webview_window("bar") else {
         return;
     };
@@ -276,7 +291,7 @@ fn size_bar(app: &tauri::AppHandle, layout: BarLayout, show_flame: bool) {
         BarLayout::Compact => 36u32,
         BarLayout::Stacked => 64u32,
     };
-    let height = bar_h + if show_flame { FLAME_HEADROOM } else { 0 };
+    let height = bar_h + if headroom { FLAME_HEADROOM } else { 0 };
     let _ = bar.set_size(tauri::LogicalSize::new(220u32, height));
 }
 
@@ -284,8 +299,12 @@ fn position_bar(app: &tauri::AppHandle, saved: Option<(i32, i32)>) {
     let Some(bar) = app.get_webview_window("bar") else {
         return;
     };
+    // Positions refer to the bar itself; the window starts FLAME_HEADROOM
+    // higher while flames are showing.
+    let lift = if headroom_active(app) { FLAME_HEADROOM as f64 } else { 0.0 };
     if let Some((x, y)) = saved {
-        let _ = bar.set_position(PhysicalPosition::new(x, y));
+        let scale = bar.scale_factor().unwrap_or(1.0);
+        let _ = bar.set_position(PhysicalPosition::new(x, y - (lift * scale).round() as i32));
         return;
     }
     // Default: top-right of the primary monitor, with a small inset.
@@ -296,7 +315,7 @@ fn position_bar(app: &tauri::AppHandle, saved: Option<(i32, i32)>) {
         let bar_logical_w = 220.0;
         let inset = 16.0;
         let x = m_pos.x as f64 + (m_size.width as f64 / scale) - bar_logical_w - inset;
-        let y = m_pos.y as f64 / scale + 36.0;
+        let y = m_pos.y as f64 / scale + 36.0 - lift;
         let _ = bar.set_position(LogicalPosition::new(x, y));
     }
 }
@@ -415,8 +434,7 @@ fn set_bar_layout(app: tauri::AppHandle, state: State<AppState>, layout: BarLayo
         s.bar_layout = layout;
         settings::save(&app, &s);
     }
-    let show_flame = state.settings.lock().unwrap().show_flame;
-    size_bar(&app, layout, show_flame);
+    size_bar(&app, layout, state.flame_headroom.load(Ordering::SeqCst));
     emit_settings_update(&app, &state);
 }
 
@@ -447,17 +465,26 @@ fn set_show_flame(app: tauri::AppHandle, state: State<AppState>, enabled: bool) 
         s.show_flame = enabled;
         settings::save(&app, &s);
     }
+    emit_settings_update(&app, &state);
+}
+
+/// Called by the bar when flames start or stop showing. Grows the window
+/// upward by FLAME_HEADROOM (or shrinks it back) so the bar itself stays put
+/// and the transparent strip only exists while there are flames in it.
+#[tauri::command]
+fn set_flame_headroom(app: tauri::AppHandle, state: State<AppState>, active: bool) {
+    if state.flame_headroom.swap(active, Ordering::SeqCst) == active {
+        return;
+    }
     let layout = state.settings.lock().unwrap().bar_layout;
-    // Grow/shrink the window upward so the bar itself stays where it is.
     if let Some(bar) = app.get_webview_window("bar") {
         if let (Ok(pos), Ok(scale)) = (bar.outer_position(), bar.scale_factor()) {
-            let delta = (FLAME_HEADROOM as f64 * scale).round() as i32;
-            let y = if enabled { pos.y - delta } else { pos.y + delta };
+            let delta = headroom_px(scale);
+            let y = if active { pos.y - delta } else { pos.y + delta };
             let _ = bar.set_position(PhysicalPosition::new(pos.x, y));
         }
     }
-    size_bar(&app, layout, enabled);
-    emit_settings_update(&app, &state);
+    size_bar(&app, layout, active);
 }
 
 #[tauri::command]
@@ -608,6 +635,7 @@ pub fn run() {
             set_notify_thresholds,
             set_show_flame,
             set_flame_style,
+            set_flame_headroom,
             reset_bar_position,
             get_claude_code_usage,
             get_key_status,
@@ -628,8 +656,14 @@ pub fn run() {
                 if let WindowEvent::Moved(pos) = event {
                     let app = window.app_handle();
                     if let Some(state) = app.try_state::<AppState>() {
+                        // Save the bar's own position, not the window's.
+                        let lift = if state.flame_headroom.load(Ordering::SeqCst) {
+                            headroom_px(window.scale_factor().unwrap_or(1.0))
+                        } else {
+                            0
+                        };
                         let mut s = state.settings.lock().unwrap();
-                        s.bar_position = Some((pos.x, pos.y));
+                        s.bar_position = Some((pos.x, pos.y + lift));
                         settings::save(app, &s);
                     }
                 }
@@ -642,6 +676,7 @@ pub fn run() {
                 api_cache: Mutex::new(ApiSnapshot::default()),
                 quota_cache: Mutex::new(QuotaSnapshot::default()),
                 threshold_state: Mutex::new(ThresholdState::default()),
+                flame_headroom: AtomicBool::new(false),
             });
 
             apply_dock_visibility(app.handle(), loaded.hide_dock_icon);
@@ -705,7 +740,7 @@ pub fn run() {
 
             apply_mode(app.handle(), loaded.display_mode);
             position_bar(app.handle(), loaded.bar_position);
-            size_bar(app.handle(), loaded.bar_layout, loaded.show_flame);
+            size_bar(app.handle(), loaded.bar_layout, false);
 
             if let Some(settings) = app.get_webview_window("settings") {
                 let _ = settings.show();

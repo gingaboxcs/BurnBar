@@ -34,6 +34,7 @@ let showFlame = true;
 let flameStyle: "live" | "clips" = "live";
 let flamePreviewPct: number | null = null; // TEMPORARY: set by the Settings test slider
 let lastDisplayPct = 0;
+let headroomOn = false; // window starts without flame headroom
 let liveFlame: LiveFlame | null | undefined; // undefined = not created yet, null = WebGL unavailable
 let lastCC: ClaudeCodeSnapshot | null = null;
 let lastQuota: QuotaSnapshot | null = null;
@@ -111,6 +112,13 @@ function applyFlame(pct: number) {
   const bar = document.getElementById("bar")!;
   const stage = showFlame ? flameStage(pct) : 0;
   bar.classList.toggle("flame-on", stage > 0);
+
+  // Ask for transparent space above the bar only while flames are showing.
+  const wantHeadroom = stage > 0;
+  if (wantHeadroom !== headroomOn) {
+    headroomOn = wantHeadroom;
+    invoke("set_flame_headroom", { active: wantHeadroom }).catch(() => {});
+  }
 
   // Live flame, falling back to the clips if WebGL isn't available.
   const live = flameStyle === "live" ? getLiveFlame() : null;

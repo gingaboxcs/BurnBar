@@ -632,9 +632,23 @@ pub fn run() {
             let quit = MenuItem::with_id(app, "quit", "Quit BurnBar", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_settings, &toggle_bar, &reset_pos, &sep, &quit])?;
 
+            // macOS: monochrome template glyph (macOS tints it for light/dark menu bars).
+            // Using the opaque app icon as a template renders as a solid white square.
+            #[cfg(target_os = "macos")]
+            let (tray_icon, tray_is_template) = (
+                tauri::image::Image::from_bytes(include_bytes!("../icons/tray/tray-template.png"))?,
+                true,
+            );
+            // Windows/Linux: full-color flame; templates aren't a thing there.
+            #[cfg(not(target_os = "macos"))]
+            let (tray_icon, tray_is_template) = (
+                tauri::image::Image::from_bytes(include_bytes!("../icons/tray/tray.png"))?,
+                false,
+            );
+
             let _tray = TrayIconBuilder::with_id("main")
-                .icon(app.default_window_icon().unwrap().clone())
-                .icon_as_template(true)
+                .icon(tray_icon)
+                .icon_as_template(tray_is_template)
                 .tooltip("BurnBar")
                 .menu(&menu)
                 .show_menu_on_left_click(true)

@@ -503,7 +503,9 @@ function render() {
       <h2>Claude.ai consumer quota <span class="experimental">EXPERIMENTAL</span></h2>
       <p class="muted">
         Open the embedded claude.ai window, sign in, then try probing endpoints to find your real
-        quota. Endpoints aren't documented and will probably break — that's why this is opt-in.
+        quota. If you're signed in to the Claude desktop app, Probe can use that session instead.
+        If Google sign-in won't finish, choose "Continue with email" and use the same address.
+        Endpoints aren't documented and will probably break — that's why this is opt-in.
       </p>
       <div class="probe-actions">
         <button type="button" id="claude-ai-connect" class="btn">Open claude.ai window</button>
@@ -716,10 +718,21 @@ function attachHandlers() {
       const url = probeUrl.value.trim();
       if (!url) return;
       if (probeOut) probeOut.textContent = `Probing ${url}…`;
+      probeBtn.disabled = true;
       try {
-        await invoke("claude_ai_probe", { url });
+        // The backend times out after 20s; this is a backstop so the UI
+        // can never sit on "Probing…" forever.
+        const result = await Promise.race([
+          invoke<ProbeResult>("claude_ai_probe", { url }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("No response after 30s.")), 30_000),
+          ),
+        ]);
+        if (probeOut) probeOut.textContent = formatProbe(result);
       } catch (e) {
-        if (probeOut) probeOut.textContent = `Probe failed (no webview open?): ${e}`;
+        if (probeOut) probeOut.textContent = `Probe failed: ${e}`;
+      } finally {
+        probeBtn.disabled = false;
       }
     });
   }
@@ -809,21 +822,28 @@ interface ProbeResult {
   status: number;
   body: unknown;
   error: string | null;
+  source: string | null;
 }
 
-listen<ProbeResult>("claude-ai:result", (e) => {
-  const out = document.getElementById("probe-result");
-  if (!out) return;
-  const r = e.payload;
+function formatProbe(r: ProbeResult): string {
+  const source =
+    r.source === "window"
+      ? "claude.ai window"
+      : r.source === "desktop-app"
+        ? "Claude desktop app"
+        : "";
   const lines = [
     `URL:    ${r.url}`,
-    `Status: ${r.status}`,
+    r.status ? `Status: ${r.status}` : "",
+    source ? `Session: ${source}` : "",
     r.error ? `Error:  ${r.error}` : "",
-    "",
-    "Body:",
-    typeof r.body === "string"
-      ? r.body
-      : JSON.stringify(r.body, null, 2),
   ].filter(Boolean);
-  out.textContent = lines.join("\n");
-});
+  if (r.body !== null && r.body !== undefined) {
+    lines.push(
+      "",
+      "Body:",
+      typeof r.body === "string" ? r.body : JSON.stringify(r.body, null, 2),
+    );
+  }
+  return lines.join("\n");
+}

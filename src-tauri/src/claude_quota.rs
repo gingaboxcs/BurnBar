@@ -124,7 +124,7 @@ async fn fetch_inner() -> Result<QuotaSnapshot, String> {
 }
 
 #[cfg(target_os = "macos")]
-fn read_cookies() -> Result<Vec<(String, String)>, String> {
+pub(crate) fn read_cookies() -> Result<Vec<(String, String)>, String> {
     use std::path::PathBuf;
 
     let home = dirs::home_dir().ok_or_else(|| "no home dir".to_string())?;

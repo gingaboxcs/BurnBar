@@ -17,6 +17,26 @@ interface UserSettings {
   bar_layout: BarLayout;
   notify_thresholds: boolean;
   show_flame: boolean;
+  bar_source: BarSource;
+}
+
+type BarSource = "claude" | "chatgpt";
+
+interface CodexWindow {
+  used_percent: number;
+  window_minutes: number | null;
+  resets_at: string | null;
+}
+
+interface CodexSnapshot {
+  plan_type: string | null;
+  five_hour: CodexWindow | null;
+  weekly: CodexWindow | null;
+  source: "live" | "codex_logs" | null;
+  observed_at: string | null;
+  fetched_at: string | null;
+  not_signed_in: boolean;
+  error: string | null;
 }
 
 interface KeyStatus {
@@ -69,6 +89,7 @@ let current: UserSettings = {
   bar_layout: "compact",
   notify_thresholds: true,
   show_flame: true,
+  bar_source: "claude",
 };
 
 type UpdateStatus =
@@ -202,6 +223,7 @@ let apiSnap: ApiSnapshot = {
   openai_error: null,
 };
 let ccSnap: ClaudeCodeSnapshot | null = null;
+let codexSnap: CodexSnapshot | null = null;
 
 async function loadAll() {
   try {
@@ -216,6 +238,62 @@ async function loadAll() {
   try {
     ccSnap = await invoke<ClaudeCodeSnapshot>("get_claude_code_usage");
   } catch {}
+  try {
+    codexSnap = await invoke<CodexSnapshot>("get_codex_usage");
+  } catch {}
+}
+
+async function setBarSource(source: BarSource) {
+  current.bar_source = source;
+  await invoke("set_bar_source", { source });
+}
+
+function planName(p: string | null): string {
+  if (!p) return "ChatGPT";
+  const m: Record<string, string> = {
+    pro: "ChatGPT Pro",
+    plus: "ChatGPT Plus",
+    business: "ChatGPT Business",
+    team: "ChatGPT Business",
+    enterprise: "ChatGPT Enterprise",
+    edu: "ChatGPT Edu",
+    free: "ChatGPT Free",
+  };
+  return m[p.toLowerCase()] ?? `ChatGPT (${p})`;
+}
+
+function windowLine(label: string, w: CodexWindow | null): string {
+  if (!w) return "";
+  const resets = w.resets_at
+    ? new Date(w.resets_at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })
+    : "—";
+  return `<li><span class="m-name">${label}: <strong>${Math.round(w.used_percent)}%</strong> used</span>
+    <span class="m-cost">resets ${escape(resets)}</span></li>`;
+}
+
+function chatgptCard(): string {
+  const c = codexSnap;
+  if (!c || !c.fetched_at) return `<div class="prov-loading">Loading…</div>`;
+  if (!c.five_hour && !c.weekly) {
+    return `<div class="${c.not_signed_in ? "prov-empty" : "prov-error"}">
+      ${escape(c.error ?? "No limits reported.")}
+    </div>`;
+  }
+  const note =
+    c.source === "codex_logs"
+      ? `<p class="muted small">From your last Codex session${
+          c.observed_at ? ` (${escape(new Date(c.observed_at).toLocaleString())})` : ""
+        }. ${c.error ? escape(c.error) : ""}</p>`
+      : "";
+  return `
+    <div class="prov-stats">
+      <div class="prov-headline"><span class="prov-cost">${escape(planName(c.plan_type))}</span></div>
+      <ul class="prov-models">
+        ${windowLine("5-hour", c.five_hour)}
+        ${windowLine("Weekly", c.weekly)}
+      </ul>
+      ${note}
+    </div>`;
 }
 
 async function calibrate(pctUsed: number, resetMinutes: number) {
@@ -406,6 +484,18 @@ function render() {
       </div>
 
       <div class="toggle-row">
+        <span class="cal-label">Bar shows:</span>
+        <label class="radio inline">
+          <input type="radio" name="bar-source" value="claude" ${current.bar_source !== "chatgpt" ? "checked" : ""} />
+          <span>Claude</span>
+        </label>
+        <label class="radio inline">
+          <input type="radio" name="bar-source" value="chatgpt" ${current.bar_source === "chatgpt" ? "checked" : ""} />
+          <span>ChatGPT subscription</span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
         <label class="toggle">
           <input type="checkbox" id="notify-thresholds" ${current.notify_thresholds ? "checked" : ""} />
           <span>
@@ -452,6 +542,25 @@ function render() {
         ).join("")}
       </div>
       ${calibrateBlock()}
+    </section>
+
+    <section>
+      <h2>ChatGPT subscription</h2>
+      <p class="muted">
+        Plus and Pro don't meter chat, but they do meter Codex with a 5-hour and a weekly limit.
+        BurnBar reads them using the ChatGPT sign-in saved by the Codex app or CLI
+        (<code>~/.codex/auth.json</code>). It never changes that sign-in. No API key needed.
+      </p>
+      <div class="api-card">
+        <header class="api-card-header">
+          <h3>ChatGPT limits</h3>
+          <span class="dot ${codexSnap && (codexSnap.five_hour || codexSnap.weekly) ? "ok" : "pending"}"></span>
+        </header>
+        ${chatgptCard()}
+        <div class="api-card-actions">
+          <button type="button" class="btn-secondary" id="codex-refresh">Refresh</button>
+        </div>
+      </div>
     </section>
 
     <section>
@@ -530,7 +639,7 @@ function render() {
         <li><span class="dot ok"></span>Claude Code (local logs)</li>
         <li><span class="dot ${keyStatus.anthropic_set ? "ok" : "pending"}"></span>Anthropic API</li>
         <li><span class="dot ${keyStatus.openai_set ? "ok" : "pending"}"></span>OpenAI API</li>
-        <li><span class="dot pending"></span>Claude.ai / ChatGPT subscription — <em>Phase 4 (experimental)</em></li>
+        <li><span class="dot ${codexSnap && (codexSnap.five_hour || codexSnap.weekly) ? "ok" : "pending"}"></span>ChatGPT subscription (via Codex sign-in)</li>
       </ul>
     </section>
   `;
@@ -564,6 +673,24 @@ function attachHandlers() {
   if (notifyToggle) {
     notifyToggle.addEventListener("change", async () => {
       await setNotifyThresholds(notifyToggle.checked);
+    });
+  }
+
+  app.querySelectorAll<HTMLInputElement>('input[name="bar-source"]').forEach((el) => {
+    el.addEventListener("change", async () => {
+      if (el.checked) await setBarSource(el.value as BarSource);
+    });
+  });
+
+  const codexRefresh = app.querySelector<HTMLButtonElement>("#codex-refresh");
+  if (codexRefresh) {
+    codexRefresh.addEventListener("click", async () => {
+      codexRefresh.disabled = true;
+      try {
+        codexSnap = await invoke<CodexSnapshot>("refresh_codex_usage");
+      } finally {
+        render();
+      }
     });
   }
 
@@ -826,4 +953,10 @@ listen<ProbeResult>("claude-ai:result", (e) => {
       : JSON.stringify(r.body, null, 2),
   ].filter(Boolean);
   out.textContent = lines.join("\n");
+});
+
+// Keep the ChatGPT card fresh without re-rendering every minute (a full
+// re-render would wipe anything typed into the key inputs).
+listen<CodexSnapshot>("codex:update", (e) => {
+  codexSnap = e.payload;
 });

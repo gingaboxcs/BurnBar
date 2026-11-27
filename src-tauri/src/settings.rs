@@ -35,6 +35,15 @@ impl Default for BarLayout {
     }
 }
 
+/// Which subscription the floating bar shows.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum BarSource {
+    #[default]
+    Claude,
+    Chatgpt,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Settings {
     #[serde(default)]
@@ -56,6 +65,8 @@ pub struct Settings {
     pub notify_thresholds: bool,
     #[serde(default = "default_true")]
     pub show_flame: bool,
+    #[serde(default)]
+    pub bar_source: BarSource,
 }
 
 fn default_true() -> bool {
@@ -77,6 +88,7 @@ impl Default for Settings {
             bar_layout: BarLayout::default(),
             notify_thresholds: true,
             show_flame: true,
+            bar_source: BarSource::default(),
         }
     }
 }

@@ -7,6 +7,7 @@
 - **Claude consumer 5h + 7d quota** — pulled directly from your Claude.app session (macOS only, read-only). Same numbers the Claude desktop app shows internally.
 - **Claude Code session usage** — parses `~/.claude/projects/**/*.jsonl` for token totals across active 5-hour blocks. Works on all platforms.
 - **Anthropic API usage today** — per-model cost & tokens via the org Admin API (requires `sk-ant-admin01-…` key).
+- **ChatGPT subscription limits (Plus / Pro)** — the 5-hour and weekly Codex limits that come with your plan, read with the ChatGPT sign-in the Codex app or CLI saved in `~/.codex/auth.json` (read-only; falls back to the last Codex session log if that sign-in has expired). Pick "Bar shows: ChatGPT subscription" to put it on the floating bar.
 - **OpenAI API usage today** — same via OpenAI's `/v1/organization/usage/completions` endpoint (requires `sk-admin-…` key).
 
 ## Surfaces
@@ -71,7 +72,7 @@ Requires:
 ## Privacy
 
 - API keys are stored in your **OS keychain** (macOS Keychain, Windows Credential Manager, Linux Secret Service), never on disk in plaintext.
-- Claude.app cookie reading is **read-only** and stays on your machine — nothing is sent anywhere except to `api.anthropic.com`, `api.openai.com`, and `claude.ai` directly using your own credentials.
+- Claude.app cookie reading is **read-only** and stays on your machine — nothing is sent anywhere except to `api.anthropic.com`, `api.openai.com`, `chatgpt.com`, and `claude.ai` directly using your own credentials.
 - No telemetry, no analytics, no remote config.
 
 ## License

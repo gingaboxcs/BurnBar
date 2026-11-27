@@ -15,6 +15,23 @@ interface UserSettings {
   cap_tokens: number;
   bar_layout: "compact" | "stacked";
   show_flame: boolean;
+  bar_source?: "claude" | "chatgpt";
+}
+
+interface CodexWindow {
+  used_percent: number;
+  window_minutes: number | null;
+  resets_at: string | null;
+}
+
+interface CodexSnapshot {
+  plan_type: string | null;
+  five_hour: CodexWindow | null;
+  weekly: CodexWindow | null;
+  source: "live" | "codex_logs" | null;
+  observed_at: string | null;
+  not_signed_in: boolean;
+  error: string | null;
 }
 
 interface QuotaSnapshot {
@@ -31,6 +48,8 @@ let layout: "compact" | "stacked" = "compact";
 let showFlame = true;
 let lastCC: ClaudeCodeSnapshot | null = null;
 let lastQuota: QuotaSnapshot | null = null;
+let lastCodex: CodexSnapshot | null = null;
+let barSource: "claude" | "chatgpt" = "claude";
 
 function fmtTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -186,7 +205,64 @@ function applyFlame(pct: number) {
   bar.style.setProperty("--flame-glow", `${glow}px`);
 }
 
+function paintChatGPT() {
+  const bar = document.getElementById("bar")!;
+  const src5 = document.getElementById("src-5h")!;
+  const pct5 = document.getElementById("pct-5h")!;
+  const time5 = document.getElementById("time-5h")!;
+  const src7 = document.getElementById("src-7d")!;
+  const pct7 = document.getElementById("pct-7d")!;
+  const time7 = document.getElementById("time-7d")!;
+  const row7 = document.querySelector<HTMLElement>(".row-7d")!;
+  const stale = document.getElementById("stale-mark")!;
+
+  const c = lastCodex;
+  const fromLogs = c?.source === "codex_logs";
+  const isStale = !!c && (fromLogs || (!c.five_hour && !c.weekly));
+  // The first window shown is the 5-hour one if the plan has it, else weekly.
+  const first = c?.five_hour ?? c?.weekly ?? null;
+  const second = c?.five_hour ? c.weekly : null;
+  const firstLabel = c?.five_hour ? "5H" : "7D";
+
+  bar.title = fromLogs
+    ? `ChatGPT limits from your last Codex session${c?.error ? ` (${c.error})` : ""}.`
+    : "Live ChatGPT subscription limits (Codex).";
+
+  let displayPct = 0;
+  if (first) {
+    displayPct = first.used_percent;
+    src5.textContent = `GPT ${firstLabel}`;
+    pct5.textContent = `${Math.round(first.used_percent)}%`;
+    time5.textContent =
+      layout === "stacked"
+        ? `resets ${fmtResetClock(first.resets_at)}`
+        : fmtRemainingFromIso(first.resets_at);
+    if (second) {
+      row7.style.display = "";
+      src7.textContent = "7D";
+      pct7.textContent = `${Math.round(second.used_percent)}%`;
+      time7.textContent = layout === "stacked" ? `resets ${fmtResetClock(second.resets_at)}` : "";
+    } else {
+      row7.style.display = "none";
+    }
+  } else {
+    src5.textContent = "GPT";
+    pct5.textContent = "—";
+    time5.textContent = c?.not_signed_in ? "sign in to Codex" : "—";
+    row7.style.display = "none";
+  }
+  stale.title = isStale ? (c?.error ?? "ChatGPT limits unavailable.") : "";
+  setBarColors(displayPct, isStale);
+  applyFlame(displayPct);
+}
+
 function paint() {
+  if (barSource === "chatgpt") {
+    paintChatGPT();
+    return;
+  }
+  document.getElementById("bar")!.title = "Live Claude consumer quota.";
+  document.getElementById("src-7d")!.textContent = "7D";
   const src5 = document.getElementById("src-5h")!;
   const pct5 = document.getElementById("pct-5h")!;
   const time5 = document.getElementById("time-5h")!;
@@ -251,6 +327,7 @@ async function refreshSettings() {
     cap = s.cap_tokens || 5_000_000;
     layout = s.bar_layout || "compact";
     showFlame = s.show_flame !== false;
+    barSource = s.bar_source === "chatgpt" ? "chatgpt" : "claude";
     applyLayoutClass();
   } catch {}
 }
@@ -261,6 +338,9 @@ async function refreshAll() {
   } catch {}
   try {
     lastQuota = await invoke<QuotaSnapshot>("get_claude_quota");
+  } catch {}
+  try {
+    lastCodex = await invoke<CodexSnapshot>("get_codex_usage");
   } catch {}
   paint();
 }
@@ -289,7 +369,12 @@ listen<QuotaSnapshot>("quota:update", (e) => {
   lastQuota = e.payload;
   paint();
 });
+listen<CodexSnapshot>("codex:update", (e) => {
+  lastCodex = e.payload;
+  paint();
+});
 listen<UserSettings>("settings:update", async (e) => {
+  barSource = e.payload.bar_source === "chatgpt" ? "chatgpt" : "claude";
   cap = e.payload.cap_tokens || 5_000_000;
   layout = e.payload.bar_layout || "compact";
   showFlame = e.payload.show_flame !== false;

@@ -500,17 +500,8 @@ fn claude_ai_connect(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn claude_ai_probe(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    claude_ai::probe(&app, &url)
-}
-
-#[tauri::command]
-fn claude_ai_probe_result(
-    app: tauri::AppHandle,
-    result: claude_ai::ProbeResult,
-) -> Result<(), String> {
-    app.emit("claude-ai:result", &result)
-        .map_err(|e| e.to_string())
+async fn claude_ai_probe(app: tauri::AppHandle, url: String) -> claude_ai::ProbeResult {
+    claude_ai::probe(&app, &url).await
 }
 
 #[tauri::command]
@@ -584,7 +575,6 @@ pub fn run() {
             get_api_usage,
             claude_ai_connect,
             claude_ai_probe,
-            claude_ai_probe_result,
             claude_ai_close,
             get_claude_quota,
             refresh_claude_quota,

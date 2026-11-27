@@ -66,7 +66,10 @@ void main() {
 
   // Local flame height varies across the bar (separate tongues) and over time.
   float maxH = mix(0.42, 1.0, uHeat);
-  float tongue = maxH * (0.45 + 0.85 * fbm(vec2(x * 1.3, uTime * 0.7 * speed)));
+  // Spiky profile: pow() pushes most of the width low so separate tongues
+  // stand out instead of a flat wall of fire.
+  float prof = fbm(vec2(x * 2.4, uTime * 0.8 * speed));
+  float tongue = maxH * (0.22 + 1.5 * pow(prof, 1.8));
   float y = uv.y / max(tongue, 0.05);
 
   // Rising turbulence bends and tears the edges.

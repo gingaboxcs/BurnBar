@@ -78,6 +78,7 @@ function applyLayoutClass() {
   const bar = document.getElementById("bar")!;
   bar.classList.toggle("compact", layout === "compact");
   bar.classList.toggle("stacked", layout === "stacked");
+  document.body.classList.toggle("stacked", layout === "stacked");
 }
 
 function setBarColors(pct: number, stale: boolean) {
@@ -213,6 +214,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const win = getCurrentWindow();
   document.body.addEventListener("mousedown", async (e) => {
     if (e.button !== 0) return;
+    // Only the bar itself is draggable, not the transparent flame headroom.
+    if (!(e.target as Element | null)?.closest?.("#bar")) return;
     e.preventDefault();
     try {
       await win.startDragging();

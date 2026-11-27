@@ -262,6 +262,24 @@ fn apply_dock_visibility(_app: &tauri::AppHandle, _hide: bool) {
     // settings window naturally shows/hides as a normal app window.
 }
 
+/// Transparent space above the bar that the flames rise into. Must match
+/// `--flame-headroom` in src/bar.css.
+const FLAME_HEADROOM: u32 = 44;
+
+/// The bar window is the bar itself plus, when flames are enabled, headroom
+/// above it so flames can burn on top of the bar instead of inside it.
+fn size_bar(app: &tauri::AppHandle, layout: BarLayout, show_flame: bool) {
+    let Some(bar) = app.get_webview_window("bar") else {
+        return;
+    };
+    let bar_h = match layout {
+        BarLayout::Compact => 36u32,
+        BarLayout::Stacked => 64u32,
+    };
+    let height = bar_h + if show_flame { FLAME_HEADROOM } else { 0 };
+    let _ = bar.set_size(tauri::LogicalSize::new(220u32, height));
+}
+
 fn position_bar(app: &tauri::AppHandle, saved: Option<(i32, i32)>) {
     let Some(bar) = app.get_webview_window("bar") else {
         return;
@@ -397,13 +415,8 @@ fn set_bar_layout(app: tauri::AppHandle, state: State<AppState>, layout: BarLayo
         s.bar_layout = layout;
         settings::save(&app, &s);
     }
-    if let Some(bar) = app.get_webview_window("bar") {
-        let height = match layout {
-            BarLayout::Compact => 36u32,
-            BarLayout::Stacked => 64u32,
-        };
-        let _ = bar.set_size(tauri::LogicalSize::new(220u32, height));
-    }
+    let show_flame = state.settings.lock().unwrap().show_flame;
+    size_bar(&app, layout, show_flame);
     emit_settings_update(&app, &state);
 }
 
@@ -434,6 +447,16 @@ fn set_show_flame(app: tauri::AppHandle, state: State<AppState>, enabled: bool) 
         s.show_flame = enabled;
         settings::save(&app, &s);
     }
+    let layout = state.settings.lock().unwrap().bar_layout;
+    // Grow/shrink the window upward so the bar itself stays where it is.
+    if let Some(bar) = app.get_webview_window("bar") {
+        if let (Ok(pos), Ok(scale)) = (bar.outer_position(), bar.scale_factor()) {
+            let delta = (FLAME_HEADROOM as f64 * scale).round() as i32;
+            let y = if enabled { pos.y - delta } else { pos.y + delta };
+            let _ = bar.set_position(PhysicalPosition::new(pos.x, y));
+        }
+    }
+    size_bar(&app, layout, enabled);
     emit_settings_update(&app, &state);
 }
 
@@ -682,13 +705,7 @@ pub fn run() {
 
             apply_mode(app.handle(), loaded.display_mode);
             position_bar(app.handle(), loaded.bar_position);
-            if let Some(bar) = app.get_webview_window("bar") {
-                let height = match loaded.bar_layout {
-                    BarLayout::Compact => 36u32,
-                    BarLayout::Stacked => 64u32,
-                };
-                let _ = bar.set_size(tauri::LogicalSize::new(220u32, height));
-            }
+            size_bar(app.handle(), loaded.bar_layout, loaded.show_flame);
 
             if let Some(settings) = app.get_webview_window("settings") {
                 let _ = settings.show();

@@ -10,9 +10,25 @@ body {
   color: #f5f5f7;
 }
 
-#bar {
+body {
   position: relative;
-  height: 100vh;
+  /* Must match FLAME_HEADROOM in src-tauri/src/lib.rs */
+  --flame-headroom: 44px;
+  --bar-h: 36px;
+}
+body.stacked {
+  --bar-h: 64px;
+}
+
+/* The bar sits at the bottom of the window. When flames are enabled the
+ * window is taller by --flame-headroom, leaving transparent space above the
+ * bar for the flames to rise into. */
+#bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--bar-h);
   border-radius: 10px;
   background: rgba(20, 20, 22, 0.82);
   backdrop-filter: blur(14px);
@@ -151,16 +167,18 @@ body {
   background: rgba(20, 20, 22, 0.65);
 }
 
-/* ---- Flame overlay ----
- * Flames burn along the bottom of the bar, behind the text. Either the live
- * WebGL flame (#flame-live, see flame-gl.ts) or one of three animated clip
- * strips is shown; switching clip stages crossfades.
- * Each strip keeps its natural aspect ratio unless it is taller than the bar,
- * in which case it is squashed to fit rather than clipped. */
+/* ---- Flames ----
+ * Flames burn on top of the bar: their base overlaps the bar's top edge by a
+ * few px and they rise into the transparent headroom above it. Either the
+ * live WebGL flame (#flame-live, see flame-gl.ts) or one of three animated
+ * clip strips is shown; switching clip stages crossfades. */
 #flame {
   position: absolute;
-  inset: 0;
-  z-index: 0;
+  left: 4px;
+  right: 4px;
+  bottom: calc(var(--bar-h) - 5px);
+  height: calc(var(--flame-headroom) + 5px);
+  z-index: 2;
   pointer-events: none;
 }
 #flame-live {
@@ -186,19 +204,9 @@ body {
   -webkit-user-drag: none;
 }
 .flame-stage.on {
-  opacity: 0.92;
+  opacity: 1;
   visibility: visible;
   transition:
     opacity 700ms ease,
     visibility 0s linear 0s;
-}
-/* Keep the numbers readable over bright flames. */
-#bar.flame-on #content {
-  text-shadow:
-    0 0 3px rgba(0, 0, 0, 0.9),
-    0 1px 2px rgba(0, 0, 0, 0.8);
-}
-#bar.flame-on .src,
-#bar.flame-on .time {
-  color: #e5e5ea;
 }

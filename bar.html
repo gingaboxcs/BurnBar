@@ -7,14 +7,14 @@
     <link rel="stylesheet" href="/src/bar.css" />
   </head>
   <body>
+    <div id="flame" data-tauri-drag-region aria-hidden="true">
+      <canvas id="flame-live"></canvas>
+      <img class="flame-stage" data-stage="1" src="/flames/flame-1-blue.webp" alt="" draggable="false" />
+      <img class="flame-stage" data-stage="2" src="/flames/flame-2-blue-orange.webp" alt="" draggable="false" />
+      <img class="flame-stage" data-stage="3" src="/flames/flame-3-orange-yellow.webp" alt="" draggable="false" />
+    </div>
     <div id="bar" class="compact" data-tauri-drag-region title="Live Claude consumer quota.">
       <div id="fill" data-tauri-drag-region></div>
-      <div id="flame" data-tauri-drag-region aria-hidden="true">
-        <canvas id="flame-live"></canvas>
-        <img class="flame-stage" data-stage="1" src="/flames/flame-1-blue.webp" alt="" draggable="false" />
-        <img class="flame-stage" data-stage="2" src="/flames/flame-2-blue-orange.webp" alt="" draggable="false" />
-        <img class="flame-stage" data-stage="3" src="/flames/flame-3-orange-yellow.webp" alt="" draggable="false" />
-      </div>
       <div id="content" data-tauri-drag-region>
         <div class="row row-5h" data-tauri-drag-region>
           <span class="stale-mark" id="stale-mark" data-tauri-drag-region>⚠</span>

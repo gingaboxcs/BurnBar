@@ -56,6 +56,10 @@ pub struct Settings {
     pub notify_thresholds: bool,
     #[serde(default = "default_true")]
     pub show_flame: bool,
+    /// Show the separate Fable weekly limit on the bar when the plan has one
+    /// and there's no 5-hour window (verified Ultra accounts).
+    #[serde(default = "default_true")]
+    pub show_fable: bool,
 }
 
 fn default_true() -> bool {
@@ -77,6 +81,7 @@ impl Default for Settings {
             bar_layout: BarLayout::default(),
             notify_thresholds: true,
             show_flame: true,
+            show_fable: true,
         }
     }
 }

@@ -17,6 +17,7 @@ interface UserSettings {
   bar_layout: BarLayout;
   notify_thresholds: boolean;
   show_flame: boolean;
+  show_fable: boolean;
 }
 
 interface KeyStatus {
@@ -71,6 +72,7 @@ let current: UserSettings = {
   bar_layout: "compact",
   notify_thresholds: true,
   show_flame: true,
+  show_fable: true,
 };
 
 type UpdateStatus =
@@ -265,6 +267,11 @@ async function setShowFlame(enabled: boolean) {
   await invoke("set_show_flame", { enabled });
 }
 
+async function setShowFable(enabled: boolean) {
+  current.show_fable = enabled;
+  await invoke("set_show_fable", { enabled });
+}
+
 async function resetBarPosition() {
   await invoke("reset_bar_position");
 }
@@ -428,6 +435,16 @@ function render() {
       </div>
 
       <div class="toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="show-fable" ${current.show_fable ? "checked" : ""} />
+          <span>
+            <strong>Show Fable usage (Ultra)</strong>
+            <em>Ultra has no 5-hour limit, so the bar shows Weekly (7D) and the separate Fable weekly limit (FB). Fable usage is always listed in the tray menu.</em>
+          </span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
         <button type="button" id="reset-pos" class="btn-secondary">Reset bar position</button>
         <span class="muted small">Drag the bar to move it; position is remembered automatically.</span>
       </div>
@@ -573,6 +590,13 @@ function attachHandlers() {
   if (flameToggle) {
     flameToggle.addEventListener("change", async () => {
       await setShowFlame(flameToggle.checked);
+    });
+  }
+
+  const fableToggle = app.querySelector<HTMLInputElement>("#show-fable");
+  if (fableToggle) {
+    fableToggle.addEventListener("change", async () => {
+      await setShowFable(fableToggle.checked);
     });
   }
 

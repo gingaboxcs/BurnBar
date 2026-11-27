@@ -151,49 +151,54 @@ body {
   background: rgba(20, 20, 22, 0.65);
 }
 
-/* ---- Flame overlay ---- */
+/* ---- Flame overlay ----
+ * Flames burn along the bottom of the bar, behind the text. Either the live
+ * WebGL flame (#flame-live, see flame-gl.ts) or one of three animated clip
+ * strips is shown; switching clip stages crossfades.
+ * Each strip keeps its natural aspect ratio unless it is taller than the bar,
+ * in which case it is squashed to fit rather than clipped. */
 #flame {
   position: absolute;
-  top: 2px;
-  right: 4px;
-  width: var(--flame-w, 14px);
-  height: var(--flame-h, 18px);
-  z-index: 2;
+  inset: 0;
+  z-index: 0;
   pointer-events: none;
+}
+#flame-live {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.flame-stage {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  object-fit: fill;
   opacity: 0;
-  transform-origin: bottom center;
+  visibility: hidden;
+  /* Fade out, then hide so the off-screen animation stops being painted. */
   transition:
-    opacity 240ms ease,
-    width 360ms cubic-bezier(0.34, 1.56, 0.64, 1),
-    height 360ms cubic-bezier(0.34, 1.56, 0.64, 1);
-  filter: drop-shadow(0 0 var(--flame-glow, 0px) var(--flame-color, #fb923c));
+    opacity 700ms ease,
+    visibility 0s linear 700ms;
+  -webkit-user-drag: none;
 }
-#bar.flame-on #flame {
-  opacity: 1;
+.flame-stage.on {
+  opacity: 0.92;
+  visibility: visible;
+  transition:
+    opacity 700ms ease,
+    visibility 0s linear 0s;
 }
-.flame-outer {
-  fill: var(--flame-color, #fb923c);
-  transform-origin: 50% 100%;
-  animation: flicker var(--flame-speed, 720ms) ease-in-out infinite alternate;
+/* Keep the numbers readable over bright flames. */
+#bar.flame-on #content {
+  text-shadow:
+    0 0 3px rgba(0, 0, 0, 0.9),
+    0 1px 2px rgba(0, 0, 0, 0.8);
 }
-.flame-inner {
-  fill: var(--flame-inner, #fef3c7);
-  transform-origin: 50% 100%;
-  animation: flicker-inner calc(var(--flame-speed, 720ms) * 0.7) ease-in-out infinite alternate;
-}
-@keyframes flicker {
-  0%   { transform: scale(1, 1) translateY(0); }
-  35%  { transform: scale(0.94, 1.05) translateY(-0.5px); }
-  70%  { transform: scale(1.06, 0.94) translateY(0.5px); }
-  100% { transform: scale(0.98, 1.02) translateY(-0.5px); }
-}
-@keyframes flicker-inner {
-  0%   { transform: scale(1, 0.9); }
-  50%  { transform: scale(0.9, 1.1) translateY(-0.5px); }
-  100% { transform: scale(1.05, 0.95); }
-}
-/* Stacked layout — flame is bigger because there's vertical room */
-#bar.stacked #flame {
-  top: 4px;
-  right: 6px;
+#bar.flame-on .src,
+#bar.flame-on .time {
+  color: #e5e5ea;
 }

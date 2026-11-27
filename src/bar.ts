@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { createLiveFlame, type LiveFlame } from "./flame-gl";
 
 interface ClaudeCodeSnapshot {
   block_tokens: number;
@@ -15,6 +16,7 @@ interface UserSettings {
   cap_tokens: number;
   bar_layout: "compact" | "stacked";
   show_flame: boolean;
+  flame_style?: "live" | "clips";
 }
 
 interface QuotaSnapshot {
@@ -29,6 +31,10 @@ interface QuotaSnapshot {
 let cap = 5_000_000;
 let layout: "compact" | "stacked" = "compact";
 let showFlame = true;
+let flameStyle: "live" | "clips" = "live";
+let flamePreviewPct: number | null = null; // TEMPORARY: set by the Settings test slider
+let lastDisplayPct = 0;
+let liveFlame: LiveFlame | null | undefined; // undefined = not created yet, null = WebGL unavailable
 let lastCC: ClaudeCodeSnapshot | null = null;
 let lastQuota: QuotaSnapshot | null = null;
 
@@ -83,107 +89,38 @@ function setBarColors(pct: number, stale: boolean) {
   bar.classList.toggle("stale", stale);
 }
 
-/**
- * Map a 0..1 fraction across a list of [stop, value] pairs.
- * Values can be 3-tuples (RGB) or single numbers.
- */
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-function lerpStops(t: number, stops: Array<[number, [number, number, number]]>): [number, number, number] {
-  if (t <= stops[0][0]) return stops[0][1];
-  if (t >= stops[stops.length - 1][0]) return stops[stops.length - 1][1];
-  for (let i = 1; i < stops.length; i++) {
-    const [s1, v1] = stops[i - 1];
-    const [s2, v2] = stops[i];
-    if (t <= s2) {
-      const u = (t - s1) / (s2 - s1);
-      return [lerp(v1[0], v2[0], u), lerp(v1[1], v2[1], u), lerp(v1[2], v2[2], u)];
-    }
-  }
-  return stops[stops.length - 1][1];
-}
-function lerpNumStops(t: number, stops: Array<[number, number]>): number {
-  if (t <= stops[0][0]) return stops[0][1];
-  if (t >= stops[stops.length - 1][0]) return stops[stops.length - 1][1];
-  for (let i = 1; i < stops.length; i++) {
-    const [s1, v1] = stops[i - 1];
-    const [s2, v2] = stops[i];
-    if (t <= s2) {
-      const u = (t - s1) / (s2 - s1);
-      return lerp(v1, v2, u);
-    }
-  }
-  return stops[stops.length - 1][1];
+// Flame stages: 1 = small blue (50%+), 2 = blue + orange (70%+),
+// 3 = large orange + yellow (90%+). Nothing below 50%.
+function flameStage(pct: number): number {
+  if (pct >= 90) return 3;
+  if (pct >= 70) return 2;
+  if (pct >= 50) return 1;
+  return 0;
 }
 
-function rgb(c: [number, number, number]): string {
-  return `rgb(${Math.round(c[0])}, ${Math.round(c[1])}, ${Math.round(c[2])})`;
+function getLiveFlame(): LiveFlame | null {
+  if (liveFlame === undefined) {
+    const canvas = document.getElementById("flame-live") as HTMLCanvasElement | null;
+    liveFlame = canvas ? createLiveFlame(canvas) : null;
+  }
+  return liveFlame;
 }
 
 function applyFlame(pct: number) {
   const bar = document.getElementById("bar")!;
-  if (!showFlame || pct < 50) {
-    bar.classList.remove("flame-on");
-    return;
+  const stage = showFlame ? flameStage(pct) : 0;
+  bar.classList.toggle("flame-on", stage > 0);
+
+  // Live flame, falling back to the clips if WebGL isn't available.
+  const live = flameStyle === "live" ? getLiveFlame() : null;
+  if (liveFlame) {
+    liveFlame.setVisible(!!live && showFlame);
+    liveFlame.setPct(pct);
   }
-  bar.classList.add("flame-on");
-
-  // Normalize 50..100 -> 0..1
-  const t = Math.min(1, (pct - 50) / 50);
-
-  // Color stops (RGB):
-  // 0.0 → deep blue, 0.2 → cyan, 0.45 → yellow, 0.7 → orange, 0.9 → red-orange, 1.0 → red
-  const outer = rgb(
-    lerpStops(t, [
-      [0.0, [59, 130, 246]],    // blue
-      [0.2, [56, 189, 248]],    // cyan
-      [0.45, [250, 204, 21]],   // yellow
-      [0.7, [251, 146, 60]],    // orange
-      [0.9, [239, 68, 68]],     // red-orange
-      [1.0, [220, 38, 38]],     // red
-    ]),
-  );
-  const inner = rgb(
-    lerpStops(t, [
-      [0.0, [191, 219, 254]],   // pale blue
-      [0.2, [165, 243, 252]],   // pale cyan
-      [0.45, [254, 240, 138]],  // pale yellow
-      [0.7, [254, 215, 170]],   // pale orange
-      [0.9, [254, 226, 226]],   // pale pink
-      [1.0, [254, 202, 202]],   // light red
-    ]),
-  );
-
-  // Size stops — both compact (smaller) and stacked (a touch bigger) get the same multiplier
-  const baseW = layout === "stacked" ? 16 : 14;
-  const baseH = layout === "stacked" ? 22 : 18;
-  const scale = lerpNumStops(t, [
-    [0.0, 0.55],
-    [0.3, 0.85],
-    [0.6, 1.1],
-    [0.85, 1.4],
-    [1.0, 1.7],
-  ]);
-  const speed = lerpNumStops(t, [
-    [0.0, 1200],   // slow flicker for small ember
-    [0.5, 720],
-    [0.9, 380],
-    [1.0, 260],    // frantic
-  ]);
-  const glow = lerpNumStops(t, [
-    [0.0, 0],
-    [0.5, 1],
-    [0.85, 3],
-    [1.0, 6],
-  ]);
-
-  bar.style.setProperty("--flame-color", outer);
-  bar.style.setProperty("--flame-inner", inner);
-  bar.style.setProperty("--flame-w", `${baseW * scale}px`);
-  bar.style.setProperty("--flame-h", `${baseH * scale}px`);
-  bar.style.setProperty("--flame-speed", `${Math.round(speed)}ms`);
-  bar.style.setProperty("--flame-glow", `${glow}px`);
+  const clipStage = live ? 0 : stage;
+  document.querySelectorAll<HTMLImageElement>(".flame-stage").forEach((img) => {
+    img.classList.toggle("on", Number(img.dataset.stage) === clipStage);
+  });
 }
 
 function paint() {
@@ -242,7 +179,8 @@ function paint() {
     setBarColors(0, isStale);
   }
 
-  applyFlame(displayPct);
+  lastDisplayPct = displayPct;
+  applyFlame(flamePreviewPct ?? displayPct);
 }
 
 async function refreshSettings() {
@@ -251,6 +189,7 @@ async function refreshSettings() {
     cap = s.cap_tokens || 5_000_000;
     layout = s.bar_layout || "compact";
     showFlame = s.show_flame !== false;
+    flameStyle = s.flame_style === "clips" ? "clips" : "live";
     applyLayoutClass();
   } catch {}
 }
@@ -293,6 +232,13 @@ listen<UserSettings>("settings:update", async (e) => {
   cap = e.payload.cap_tokens || 5_000_000;
   layout = e.payload.bar_layout || "compact";
   showFlame = e.payload.show_flame !== false;
+  flameStyle = e.payload.flame_style === "clips" ? "clips" : "live";
   applyLayoutClass();
   paint();
+});
+
+// TEMPORARY: flame test slider in Settings. null = back to real usage.
+listen<number | null>("flame:preview", (e) => {
+  flamePreviewPct = e.payload;
+  applyFlame(flamePreviewPct ?? lastDisplayPct);
 });

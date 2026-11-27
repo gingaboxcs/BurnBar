@@ -1,6 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { check, Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
@@ -445,6 +445,19 @@ function render() {
         </label>
       </div>
 
+      <!-- TEMPORARY: flame test slider. Remove before release. -->
+      <div class="toggle-row flame-preview-row">
+        <label class="toggle">
+          <input type="checkbox" id="flame-preview-on" />
+          <span>
+            <strong>Preview flame level (testing)</strong>
+            <em>Overrides the bar's usage for the flame only. Resets when Settings closes.</em>
+          </span>
+        </label>
+        <input type="range" id="flame-preview" min="0" max="100" step="1" value="75" disabled />
+        <span id="flame-preview-val" class="muted small">75%</span>
+      </div>
+
       <div class="toggle-row">
         <button type="button" id="reset-pos" class="btn-secondary">Reset bar position</button>
         <span class="muted small">Drag the bar to move it; position is remembered automatically.</span>
@@ -599,6 +612,22 @@ function attachHandlers() {
       if (el.checked) await setFlameStyle(el.value as FlameStyle);
     });
   });
+
+  // TEMPORARY: flame test slider. Sends a preview % to the bar window.
+  const previewOn = app.querySelector<HTMLInputElement>("#flame-preview-on");
+  const previewRange = app.querySelector<HTMLInputElement>("#flame-preview");
+  const previewVal = app.querySelector<HTMLSpanElement>("#flame-preview-val");
+  if (previewOn && previewRange && previewVal) {
+    const send = () => {
+      previewVal.textContent = `${previewRange.value}%`;
+      previewRange.disabled = !previewOn.checked;
+      emit("flame:preview", previewOn.checked ? Number(previewRange.value) : null);
+    };
+    previewOn.addEventListener("change", send);
+    previewRange.addEventListener("input", send);
+    // The controls start unchecked on every render, so drop any stale preview.
+    emit("flame:preview", null);
+  }
 
   const checkBtn = app.querySelector<HTMLButtonElement>("#check-updates");
   if (checkBtn) {
@@ -853,3 +882,12 @@ listen<ProbeResult>("claude-ai:result", (e) => {
   ].filter(Boolean);
   out.textContent = lines.join("\n");
 });
+
+// TEMPORARY: stop the flame preview when Settings closes or is hidden.
+const clearFlamePreview = () => void emit("flame:preview", null);
+window.addEventListener("pagehide", clearFlamePreview);
+getCurrentWindow()
+  .onCloseRequested(async () => {
+    await emit("flame:preview", null);
+  })
+  .catch(() => {});

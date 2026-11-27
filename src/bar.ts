@@ -32,6 +32,8 @@ let cap = 5_000_000;
 let layout: "compact" | "stacked" = "compact";
 let showFlame = true;
 let flameStyle: "live" | "clips" = "live";
+let flamePreviewPct: number | null = null; // TEMPORARY: set by the Settings test slider
+let lastDisplayPct = 0;
 let liveFlame: LiveFlame | null | undefined; // undefined = not created yet, null = WebGL unavailable
 let lastCC: ClaudeCodeSnapshot | null = null;
 let lastQuota: QuotaSnapshot | null = null;
@@ -177,7 +179,8 @@ function paint() {
     setBarColors(0, isStale);
   }
 
-  applyFlame(displayPct);
+  lastDisplayPct = displayPct;
+  applyFlame(flamePreviewPct ?? displayPct);
 }
 
 async function refreshSettings() {
@@ -232,4 +235,10 @@ listen<UserSettings>("settings:update", async (e) => {
   flameStyle = e.payload.flame_style === "clips" ? "clips" : "live";
   applyLayoutClass();
   paint();
+});
+
+// TEMPORARY: flame test slider in Settings. null = back to real usage.
+listen<number | null>("flame:preview", (e) => {
+  flamePreviewPct = e.payload;
+  applyFlame(flamePreviewPct ?? lastDisplayPct);
 });

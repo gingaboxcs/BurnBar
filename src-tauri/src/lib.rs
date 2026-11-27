@@ -2,6 +2,7 @@ mod api_usage;
 mod claude_ai;
 mod claude_code;
 mod claude_quota;
+mod codex_usage;
 mod secrets;
 mod settings;
 
@@ -20,13 +21,15 @@ use tauri_plugin_notification::NotificationExt;
 use api_usage::ApiSnapshot;
 use claude_code::ClaudeCodeSnapshot;
 use claude_quota::QuotaSnapshot;
+use codex_usage::CodexSnapshot;
 use secrets::KeyKind;
-use settings::{BarLayout, DisplayMode, Settings};
+use settings::{BarLayout, BarSource, DisplayMode, Settings};
 
 struct AppState {
     settings: Mutex<Settings>,
     api_cache: Mutex<ApiSnapshot>,
     quota_cache: Mutex<QuotaSnapshot>,
+    codex_cache: Mutex<CodexSnapshot>,
     threshold_state: Mutex<ThresholdState>,
 }
 
@@ -141,6 +144,7 @@ fn rebuild_tray(app: &tauri::AppHandle) {
 
     let quota = state.quota_cache.lock().unwrap().clone();
     let api = state.api_cache.lock().unwrap().clone();
+    let codex = state.codex_cache.lock().unwrap().clone();
 
     // ---- Build menu ----
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
@@ -185,12 +189,17 @@ fn rebuild_tray(app: &tauri::AppHandle) {
         (None, None) => "OpenAI API: not configured".to_string(),
     };
 
+    let (label_gpt_5h, label_gpt_7d) = chatgpt_tray_labels(&codex);
+
     // Disabled info rows + active actions.
     let mk_info = |s: &str| MenuItem::with_id(app, format!("info-{}", s), s, false, None::<&str>);
     let res = (|| -> tauri::Result<()> {
         let i_5h = mk_info(&label_5h)?;
         let i_7d = mk_info(&label_7d)?;
         let sep1 = PredefinedMenuItem::separator(app)?;
+        let i_g5 = mk_info(&label_gpt_5h)?;
+        let i_g7 = label_gpt_7d.as_deref().map(mk_info).transpose()?;
+        let sep_g = PredefinedMenuItem::separator(app)?;
         let i_an = mk_info(&label_anth)?;
         let i_oa = mk_info(&label_oai)?;
         let sep2 = PredefinedMenuItem::separator(app)?;
@@ -203,25 +212,87 @@ fn rebuild_tray(app: &tauri::AppHandle) {
         let sep3 = PredefinedMenuItem::separator(app)?;
         let m_quit =
             MenuItem::with_id(app, "quit", "Quit BurnBar", true, None::<&str>)?;
-        let menu = Menu::with_items(
-            app,
-            &[
-                &i_5h, &i_7d, &sep1, &i_an, &i_oa, &sep2, &m_settings, &m_toggle, &m_reset,
-                &sep3, &m_quit,
-            ],
-        )?;
+        let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
+            vec![&i_5h, &i_7d, &sep1, &i_g5];
+        if let Some(g7) = &i_g7 {
+            items.push(g7);
+        }
+        items.extend_from_slice(&[
+            &sep_g as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+            &i_an,
+            &i_oa,
+            &sep2,
+            &m_settings,
+            &m_toggle,
+            &m_reset,
+            &sep3,
+            &m_quit,
+        ]);
+        let menu = Menu::with_items(app, &items)?;
         tray.set_menu(Some(menu))?;
         Ok(())
     })();
     let _ = res;
 
     // Tooltip — short, glanceable.
-    let tip = format!(
-        "BurnBar — 5H {} · 7D {}",
+    let mut tip = format!(
+        "BurnBar — Claude 5H {} · 7D {}",
         fmt_pct(quota.five_hour_utilization),
         fmt_pct(quota.seven_day_utilization),
     );
+    if codex.five_hour.is_some() || codex.weekly.is_some() {
+        tip.push_str(&format!(
+            "\nChatGPT 5H {} · 7D {}",
+            fmt_pct(codex.five_hour.as_ref().map(|w| w.used_percent)),
+            fmt_pct(codex.weekly.as_ref().map(|w| w.used_percent)),
+        ));
+    }
     let _ = tray.set_tooltip(Some(tip));
+}
+
+fn chatgpt_tray_labels(codex: &CodexSnapshot) -> (String, Option<String>) {
+    let plan = codex
+        .plan_type
+        .as_deref()
+        .map(plan_label)
+        .unwrap_or_else(|| "ChatGPT".to_string());
+    let stale = if codex.source.as_deref() == Some("codex_logs") {
+        "  (from last Codex session)"
+    } else {
+        ""
+    };
+    let line = |name: &str, w: &codex_usage::CodexWindow| {
+        format!(
+            "{} {}: {:.0}%{}{}",
+            plan,
+            name,
+            w.used_percent,
+            w.resets_at
+                .map(|t| format!("  ·  resets {}", fmt_reset(t)))
+                .unwrap_or_default(),
+            stale
+        )
+    };
+    match (&codex.five_hour, &codex.weekly) {
+        (Some(f), Some(w)) => (line("5H", f), Some(line("7D", w))),
+        (Some(f), None) => (line("5H", f), None),
+        (None, Some(w)) => (line("7D", w), None),
+        (None, None) if codex.not_signed_in => ("ChatGPT: not signed in to Codex".into(), None),
+        (None, None) if codex.error.is_some() => ("ChatGPT: unavailable".into(), None),
+        (None, None) => ("ChatGPT: loading…".into(), None),
+    }
+}
+
+fn plan_label(p: &str) -> String {
+    match p.to_ascii_lowercase().as_str() {
+        "pro" => "ChatGPT Pro".into(),
+        "plus" => "ChatGPT Plus".into(),
+        "business" | "team" => "ChatGPT Business".into(),
+        "enterprise" => "ChatGPT Enterprise".into(),
+        "edu" => "ChatGPT Edu".into(),
+        "free" => "ChatGPT Free".into(),
+        _ => "ChatGPT".into(),
+    }
 }
 
 fn human_tokens(n: u64) -> String {
@@ -428,6 +499,32 @@ fn set_show_flame(app: tauri::AppHandle, state: State<AppState>, enabled: bool) 
 }
 
 #[tauri::command]
+fn set_bar_source(app: tauri::AppHandle, state: State<AppState>, source: BarSource) {
+    {
+        let mut s = state.settings.lock().unwrap();
+        s.bar_source = source;
+        settings::save(&app, &s);
+    }
+    emit_settings_update(&app, &state);
+}
+
+#[tauri::command]
+fn get_codex_usage(state: State<AppState>) -> CodexSnapshot {
+    state.codex_cache.lock().unwrap().clone()
+}
+
+#[tauri::command]
+async fn refresh_codex_usage(app: tauri::AppHandle) -> CodexSnapshot {
+    let snap = codex_usage::fetch().await;
+    if let Some(state) = app.try_state::<AppState>() {
+        *state.codex_cache.lock().unwrap() = snap.clone();
+    }
+    let _ = app.emit("codex:update", &snap);
+    rebuild_tray(&app);
+    snap
+}
+
+#[tauri::command]
 fn reset_bar_position(app: tauri::AppHandle, state: State<AppState>) {
     {
         let mut s = state.settings.lock().unwrap();
@@ -588,6 +685,9 @@ pub fn run() {
             claude_ai_close,
             get_claude_quota,
             refresh_claude_quota,
+            set_bar_source,
+            get_codex_usage,
+            refresh_codex_usage,
         ])
         .on_window_event(|window, event| {
             if window.label() == "bar" {
@@ -607,6 +707,7 @@ pub fn run() {
                 settings: Mutex::new(loaded.clone()),
                 api_cache: Mutex::new(ApiSnapshot::default()),
                 quota_cache: Mutex::new(QuotaSnapshot::default()),
+                codex_cache: Mutex::new(CodexSnapshot::default()),
                 threshold_state: Mutex::new(ThresholdState::default()),
             });
 
@@ -721,6 +822,15 @@ pub fn run() {
                     check_thresholds_and_notify(&h_q, &snap);
                     let _ = h_q.emit("quota:update", &snap);
                     rebuild_tray(&h_q);
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                }
+            });
+
+            // ChatGPT subscription (Codex) limits poller. 60s, like Claude.
+            let h_cx = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    refresh_codex_usage(h_cx.clone()).await;
                     tokio::time::sleep(Duration::from_secs(60)).await;
                 }
             });

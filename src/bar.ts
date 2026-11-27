@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { createLiveFlame, type LiveFlame } from "./flame-gl";
 
 interface ClaudeCodeSnapshot {
   block_tokens: number;
@@ -15,6 +16,7 @@ interface UserSettings {
   cap_tokens: number;
   bar_layout: "compact" | "stacked";
   show_flame: boolean;
+  flame_style?: "live" | "clips";
 }
 
 interface QuotaSnapshot {
@@ -29,6 +31,8 @@ interface QuotaSnapshot {
 let cap = 5_000_000;
 let layout: "compact" | "stacked" = "compact";
 let showFlame = true;
+let flameStyle: "live" | "clips" = "live";
+let liveFlame: LiveFlame | null | undefined; // undefined = not created yet, null = WebGL unavailable
 let lastCC: ClaudeCodeSnapshot | null = null;
 let lastQuota: QuotaSnapshot | null = null;
 
@@ -92,12 +96,28 @@ function flameStage(pct: number): number {
   return 0;
 }
 
+function getLiveFlame(): LiveFlame | null {
+  if (liveFlame === undefined) {
+    const canvas = document.getElementById("flame-live") as HTMLCanvasElement | null;
+    liveFlame = canvas ? createLiveFlame(canvas) : null;
+  }
+  return liveFlame;
+}
+
 function applyFlame(pct: number) {
   const bar = document.getElementById("bar")!;
   const stage = showFlame ? flameStage(pct) : 0;
   bar.classList.toggle("flame-on", stage > 0);
+
+  // Live flame, falling back to the clips if WebGL isn't available.
+  const live = flameStyle === "live" ? getLiveFlame() : null;
+  if (liveFlame) {
+    liveFlame.setVisible(!!live && showFlame);
+    liveFlame.setPct(pct);
+  }
+  const clipStage = live ? 0 : stage;
   document.querySelectorAll<HTMLImageElement>(".flame-stage").forEach((img) => {
-    img.classList.toggle("on", Number(img.dataset.stage) === stage);
+    img.classList.toggle("on", Number(img.dataset.stage) === clipStage);
   });
 }
 
@@ -166,6 +186,7 @@ async function refreshSettings() {
     cap = s.cap_tokens || 5_000_000;
     layout = s.bar_layout || "compact";
     showFlame = s.show_flame !== false;
+    flameStyle = s.flame_style === "clips" ? "clips" : "live";
     applyLayoutClass();
   } catch {}
 }
@@ -208,6 +229,7 @@ listen<UserSettings>("settings:update", async (e) => {
   cap = e.payload.cap_tokens || 5_000_000;
   layout = e.payload.bar_layout || "compact";
   showFlame = e.payload.show_flame !== false;
+  flameStyle = e.payload.flame_style === "clips" ? "clips" : "live";
   applyLayoutClass();
   paint();
 });

@@ -152,8 +152,9 @@ body {
 }
 
 /* ---- Flame overlay ----
- * Three animated flame strips burn along the bottom of the bar, behind the
- * text. Only one stage is visible at a time; switching stages crossfades.
+ * Flames burn along the bottom of the bar, behind the text. Either the live
+ * WebGL flame (#flame-live, see flame-gl.ts) or one of three animated clip
+ * strips is shown; switching clip stages crossfades.
  * Each strip keeps its natural aspect ratio unless it is taller than the bar,
  * in which case it is squashed to fit rather than clipped. */
 #flame {
@@ -161,6 +162,12 @@ body {
   inset: 0;
   z-index: 0;
   pointer-events: none;
+}
+#flame-live {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 .flame-stage {
   position: absolute;

@@ -7,6 +7,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 type DisplayMode = "bar" | "tray" | "both";
 
 type BarLayout = "compact" | "stacked";
+type FlameStyle = "live" | "clips";
 
 interface UserSettings {
   display_mode: DisplayMode;
@@ -17,6 +18,7 @@ interface UserSettings {
   bar_layout: BarLayout;
   notify_thresholds: boolean;
   show_flame: boolean;
+  flame_style: FlameStyle;
 }
 
 interface KeyStatus {
@@ -69,6 +71,7 @@ let current: UserSettings = {
   bar_layout: "compact",
   notify_thresholds: true,
   show_flame: true,
+  flame_style: "live",
 };
 
 type UpdateStatus =
@@ -258,6 +261,11 @@ async function setNotifyThresholds(enabled: boolean) {
   await invoke("set_notify_thresholds", { enabled });
 }
 
+async function setFlameStyle(style: FlameStyle) {
+  current.flame_style = style;
+  await invoke("set_flame_style", { style });
+}
+
 async function setShowFlame(enabled: boolean) {
   current.show_flame = enabled;
   await invoke("set_show_flame", { enabled });
@@ -420,8 +428,20 @@ function render() {
           <input type="checkbox" id="show-flame" ${current.show_flame ? "checked" : ""} />
           <span>
             <strong>Show flame on bar</strong>
-            <em>Tiny blue ember appears at 50%, grows + warms to red as you approach 100%.</em>
+            <em>Blue flames appear at 50%, turn orange from about 70% and roar orange + yellow from 90%.</em>
           </span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
+        <span class="cal-label">Flame style:</span>
+        <label class="radio inline">
+          <input type="radio" name="flame-style" value="live" ${current.flame_style !== "clips" ? "checked" : ""} />
+          <span>Live (grows smoothly with usage)</span>
+        </label>
+        <label class="radio inline">
+          <input type="radio" name="flame-style" value="clips" ${current.flame_style === "clips" ? "checked" : ""} />
+          <span>Clips (three animated stages)</span>
         </label>
       </div>
 
@@ -573,6 +593,12 @@ function attachHandlers() {
       await setShowFlame(flameToggle.checked);
     });
   }
+
+  app.querySelectorAll<HTMLInputElement>('input[name="flame-style"]').forEach((el) => {
+    el.addEventListener("change", async () => {
+      if (el.checked) await setFlameStyle(el.value as FlameStyle);
+    });
+  });
 
   const checkBtn = app.querySelector<HTMLButtonElement>("#check-updates");
   if (checkBtn) {

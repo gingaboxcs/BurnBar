@@ -29,6 +29,16 @@ pub enum BarLayout {
     Stacked,
 }
 
+/// How the bar's flame is drawn: a live WebGL shader, or the three
+/// pre-rendered animated clips in `public/flames/`.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum FlameStyle {
+    #[default]
+    Live,
+    Clips,
+}
+
 impl Default for BarLayout {
     fn default() -> Self {
         BarLayout::Compact
@@ -56,6 +66,8 @@ pub struct Settings {
     pub notify_thresholds: bool,
     #[serde(default = "default_true")]
     pub show_flame: bool,
+    #[serde(default)]
+    pub flame_style: FlameStyle,
 }
 
 fn default_true() -> bool {
@@ -77,6 +89,7 @@ impl Default for Settings {
             bar_layout: BarLayout::default(),
             notify_thresholds: true,
             show_flame: true,
+            flame_style: FlameStyle::default(),
         }
     }
 }

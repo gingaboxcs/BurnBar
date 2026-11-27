@@ -15,6 +15,7 @@ interface UserSettings {
   cap_tokens: number;
   bar_layout: "compact" | "stacked";
   show_flame: boolean;
+  show_fable: boolean;
 }
 
 interface QuotaSnapshot {
@@ -22,6 +23,8 @@ interface QuotaSnapshot {
   five_hour_resets_at: string | null;
   seven_day_utilization: number | null;
   seven_day_resets_at: string | null;
+  fable_utilization: number | null;
+  fable_resets_at: string | null;
   fetched_at: string | null;
   error: string | null;
 }
@@ -29,6 +32,7 @@ interface QuotaSnapshot {
 let cap = 5_000_000;
 let layout: "compact" | "stacked" = "compact";
 let showFlame = true;
+let showFable = true;
 let lastCC: ClaudeCodeSnapshot | null = null;
 let lastQuota: QuotaSnapshot | null = null;
 
@@ -192,11 +196,22 @@ function paint() {
   const time5 = document.getElementById("time-5h")!;
   const pct7 = document.getElementById("pct-7d")!;
   const time7 = document.getElementById("time-7d")!;
+  const src7 = document.getElementById("src-7d")!;
+  src7.textContent = "7D";
+  src7.title = "";
   const row7 = document.querySelector<HTMLElement>(".row-7d")!;
   const stale = document.getElementById("stale-mark")!;
 
   const haveQuota =
     lastQuota && !lastQuota.error && lastQuota.five_hour_utilization != null;
+  // Verified Ultra accounts have no 5-hour limit, so the usage endpoint can
+  // return only the weekly window. Show that as the main row instead of
+  // falling back to Claude Code token counts.
+  const haveWeeklyOnly =
+    !!lastQuota &&
+    !lastQuota.error &&
+    lastQuota.five_hour_utilization == null &&
+    lastQuota.seven_day_utilization != null;
   const isStale = !!(lastQuota && lastQuota.error);
 
   let displayPct = 0;
@@ -217,6 +232,27 @@ function paint() {
       time7.textContent =
         layout === "stacked"
           ? `resets ${fmtResetClock(lastQuota!.seven_day_resets_at)}`
+          : "";
+    } else {
+      row7.style.display = "none";
+    }
+    setBarColors(pct, isStale);
+    stale.title = "";
+  } else if (haveWeeklyOnly) {
+    const pct = lastQuota!.seven_day_utilization!;
+    displayPct = pct;
+    src5.textContent = "7D";
+    pct5.textContent = `${Math.round(pct)}%`;
+    time5.textContent = `resets ${fmtResetClock(lastQuota!.seven_day_resets_at)}`;
+    // Second row: the separate Fable weekly limit, when the plan has one.
+    if (showFable && lastQuota!.fable_utilization != null) {
+      row7.style.display = "";
+      src7.textContent = "FB";
+      src7.title = "Fable weekly usage";
+      pct7.textContent = `${Math.round(lastQuota!.fable_utilization)}%`;
+      time7.textContent =
+        layout === "stacked"
+          ? `resets ${fmtResetClock(lastQuota!.fable_resets_at)}`
           : "";
     } else {
       row7.style.display = "none";
@@ -251,6 +287,7 @@ async function refreshSettings() {
     cap = s.cap_tokens || 5_000_000;
     layout = s.bar_layout || "compact";
     showFlame = s.show_flame !== false;
+    showFable = s.show_fable !== false;
     applyLayoutClass();
   } catch {}
 }
@@ -293,6 +330,7 @@ listen<UserSettings>("settings:update", async (e) => {
   cap = e.payload.cap_tokens || 5_000_000;
   layout = e.payload.bar_layout || "compact";
   showFlame = e.payload.show_flame !== false;
+  showFable = e.payload.show_fable !== false;
   applyLayoutClass();
   paint();
 });

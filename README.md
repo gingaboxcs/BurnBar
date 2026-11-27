@@ -46,7 +46,7 @@ chmod +x BurnBar_0.1.0_amd64.AppImage
 ## Setup tips
 
 - **Claude consumer quota:** install the official Claude desktop app and sign in once. BurnBar reads the session cookie from its local store; no login flow needed inside BurnBar.
-- **Anthropic API:** create an Admin API key at [console.anthropic.com/settings/admin-keys](https://console.anthropic.com/settings/admin-keys) (note: requires admin scope on an organization, not a personal key). Paste in Settings.
+- **Anthropic API:** create an Admin API key at the Claude Console at [platform.claude.com/settings/admin-keys](https://platform.claude.com/settings/admin-keys) (note: requires admin scope on an organization, not a personal key). Paste in Settings.
 - **OpenAI API:** same, create an Admin key at [platform.openai.com/settings/organization/admin-keys](https://platform.openai.com/settings/organization/admin-keys).
 - **Auto-start at login:** System Settings → General → Login Items & Extensions → add `BurnBar.app`.
 - **Hide from Dock (macOS):** Settings → Display → "Hide from Dock". Tray icon stays visible; no Dock entry.

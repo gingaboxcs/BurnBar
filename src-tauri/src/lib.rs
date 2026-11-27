@@ -153,6 +153,9 @@ fn rebuild_tray(app: &tauri::AppHandle) {
             _ =>
                 if quota.error.is_some() {
                     "  (Claude.app session unavailable)".to_string()
+                } else if quota.seven_day_utilization.is_some() {
+                    // e.g. verified Ultra accounts, which have no 5-hour limit
+                    "  (no 5-hour limit on this plan)".to_string()
                 } else {
                     String::new()
                 },
@@ -166,6 +169,17 @@ fn rebuild_tray(app: &tauri::AppHandle) {
             _ => String::new(),
         }
     );
+    // Max and Ultra plans have a separate weekly limit for Fable.
+    let label_fable = quota.fable_utilization.map(|u| {
+        format!(
+            "Fable weekly: {}{}",
+            fmt_pct(Some(u)),
+            quota
+                .fable_resets_at
+                .map(|t| format!("  ·  resets {}", fmt_reset(t)))
+                .unwrap_or_default()
+        )
+    });
     let label_anth = match (&api.anthropic, &api.anthropic_error) {
         (Some(u), _) => format!(
             "Anthropic API today: {}  ·  {} tok",
@@ -190,6 +204,10 @@ fn rebuild_tray(app: &tauri::AppHandle) {
     let res = (|| -> tauri::Result<()> {
         let i_5h = mk_info(&label_5h)?;
         let i_7d = mk_info(&label_7d)?;
+        let i_fable = match &label_fable {
+            Some(l) => Some(mk_info(l)?),
+            None => None,
+        };
         let sep1 = PredefinedMenuItem::separator(app)?;
         let i_an = mk_info(&label_anth)?;
         let i_oa = mk_info(&label_oai)?;
@@ -203,13 +221,20 @@ fn rebuild_tray(app: &tauri::AppHandle) {
         let sep3 = PredefinedMenuItem::separator(app)?;
         let m_quit =
             MenuItem::with_id(app, "quit", "Quit BurnBar", true, None::<&str>)?;
-        let menu = Menu::with_items(
-            app,
-            &[
-                &i_5h, &i_7d, &sep1, &i_an, &i_oa, &sep2, &m_settings, &m_toggle, &m_reset,
-                &sep3, &m_quit,
-            ],
-        )?;
+        let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![&i_5h, &i_7d];
+        if let Some(f) = &i_fable {
+            items.push(f);
+        }
+        items.push(&sep1);
+        items.push(&i_an);
+        items.push(&i_oa);
+        items.push(&sep2);
+        items.push(&m_settings);
+        items.push(&m_toggle);
+        items.push(&m_reset);
+        items.push(&sep3);
+        items.push(&m_quit);
+        let menu = Menu::with_items(app, &items)?;
         tray.set_menu(Some(menu))?;
         Ok(())
     })();
@@ -428,6 +453,16 @@ fn set_show_flame(app: tauri::AppHandle, state: State<AppState>, enabled: bool) 
 }
 
 #[tauri::command]
+fn set_show_fable(app: tauri::AppHandle, state: State<AppState>, enabled: bool) {
+    {
+        let mut s = state.settings.lock().unwrap();
+        s.show_fable = enabled;
+        settings::save(&app, &s);
+    }
+    emit_settings_update(&app, &state);
+}
+
+#[tauri::command]
 fn reset_bar_position(app: tauri::AppHandle, state: State<AppState>) {
     {
         let mut s = state.settings.lock().unwrap();
@@ -574,6 +609,7 @@ pub fn run() {
             set_bar_layout,
             set_notify_thresholds,
             set_show_flame,
+            set_show_fable,
             reset_bar_position,
             get_claude_code_usage,
             get_key_status,

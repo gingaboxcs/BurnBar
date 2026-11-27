@@ -17,6 +17,7 @@ interface UserSettings {
   bar_layout: BarLayout;
   notify_thresholds: boolean;
   show_flame: boolean;
+  show_fable: boolean;
 }
 
 interface KeyStatus {
@@ -56,8 +57,10 @@ interface ClaudeCodeSnapshot {
 
 const PRESETS: Array<{ label: string; value: number; note: string }> = [
   { label: "Pro", value: 500_000, note: "~500k tokens / 5h" },
-  { label: "Max 5×", value: 2_500_000, note: "~2.5M tokens / 5h" },
-  { label: "Max 20×", value: 10_000_000, note: "~10M tokens / 5h" },
+  { label: "Max", value: 2_500_000, note: "5× Pro · ~2.5M tokens / 5h" },
+  // Ultra (formerly Max 20×) has no 5-hour limit once verified and 10× Pro
+  // weekly usage, so this is a 10× Pro reference point rather than a hard cap.
+  { label: "Ultra", value: 5_000_000, note: "10× Pro · no 5h limit (verified)" },
 ];
 
 let current: UserSettings = {
@@ -69,6 +72,7 @@ let current: UserSettings = {
   bar_layout: "compact",
   notify_thresholds: true,
   show_flame: true,
+  show_fable: true,
 };
 
 type UpdateStatus =
@@ -263,6 +267,11 @@ async function setShowFlame(enabled: boolean) {
   await invoke("set_show_flame", { enabled });
 }
 
+async function setShowFable(enabled: boolean) {
+  current.show_fable = enabled;
+  await invoke("set_show_fable", { enabled });
+}
+
 async function resetBarPosition() {
   await invoke("reset_bar_position");
 }
@@ -426,6 +435,16 @@ function render() {
       </div>
 
       <div class="toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="show-fable" ${current.show_fable ? "checked" : ""} />
+          <span>
+            <strong>Show Fable usage (Ultra)</strong>
+            <em>Ultra has no 5-hour limit, so the bar shows Weekly (7D) and the separate Fable weekly limit (FB). Fable usage is always listed in the tray menu.</em>
+          </span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
         <button type="button" id="reset-pos" class="btn-secondary">Reset bar position</button>
         <span class="muted small">Drag the bar to move it; position is remembered automatically.</span>
       </div>
@@ -458,7 +477,7 @@ function render() {
       <h2>API usage (today, UTC)</h2>
       <p class="muted">
         Requires <strong>Admin API keys</strong>, not regular API keys. Anthropic admin keys start with <code>sk-ant-admin01-</code> and are created in the
-        <a href="#" data-href="https://console.anthropic.com/settings/admin-keys">Console → Admin Keys</a>.
+        <a href="#" data-href="https://platform.claude.com/settings/admin-keys">Claude Console → Admin Keys</a>.
         OpenAI admin keys start with <code>sk-admin-</code> and live under
         <a href="#" data-href="https://platform.openai.com/settings/organization/admin-keys">Settings → Admin Keys</a>.
         Keys are stored in your OS keychain.
@@ -571,6 +590,13 @@ function attachHandlers() {
   if (flameToggle) {
     flameToggle.addEventListener("change", async () => {
       await setShowFlame(flameToggle.checked);
+    });
+  }
+
+  const fableToggle = app.querySelector<HTMLInputElement>("#show-fable");
+  if (fableToggle) {
+    fableToggle.addEventListener("change", async () => {
+      await setShowFable(fableToggle.checked);
     });
   }
 
